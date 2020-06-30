@@ -478,7 +478,7 @@ def main():
     # %%
     # Main start
     parser = argparse.ArgumentParser()
-    parser.add_argument('EXP', help='exp')
+    parser.add_argument('EXP', help='exp name')
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
@@ -500,20 +500,45 @@ def main():
     # %%
     num_channels = 16
 
+    ## This is the original setting
+        # batch_size = 256
+        # num_hiddens = 128
+        # num_residual_hiddens = 32
+        # num_residual_layers = 2
+        # embedding_dim = 64
+        # num_embeddings = 512
+
+    ## This is for small size
+        # batch_size = 256
+        # num_channels = 4
+        # num_hiddens = 8
+        # num_residual_hiddens = 8
+        # num_residual_layers = 2
+        # embedding_dim = 4
+        # num_embeddings = 512
+
     ## This is the setting for quality?
-    if args.EXP == 'm1':
-        batch_size = args.batch_size
+        # batch_size = 256
+        # num_training_updates = 15000
+        # num_channels = 16
+        # num_hiddens = 128
+        # num_residual_hiddens = 32
+        # num_residual_layers = 2
+        # embedding_dim = 64
+        # num_embeddings = 512
 
-        num_hiddens = args.num_hiddens
-        num_residual_hiddens = 32
-        num_residual_layers = 2
+    batch_size = args.batch_size
 
-        embedding_dim = args.embedding_dim
-        num_embeddings = 512
+    num_hiddens = args.num_hiddens
+    num_residual_hiddens = 32
+    num_residual_layers = 2
 
-        commitment_cost = 0.25
-        decay = 0.99
-        learning_rate = 1e-3
+    embedding_dim = args.embedding_dim
+    num_embeddings = 512
+
+    commitment_cost = 0.25
+    decay = 0.99
+    learning_rate = 1e-3
 
     prefix='xgc-%s-batch%d-edim%d-nhidden%d'%(args.EXP, args.batch_size, args.embedding_dim, args.num_hiddens)
     logging.info ('prefix: %s' % prefix)
