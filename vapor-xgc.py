@@ -588,6 +588,7 @@ print (istart)
 num_training_updates=args.num_training_updates
 logging.info ('Training: %d' % num_training_updates)
 model.train()
+t0 = time.time()
 for i in xrange(istart, istart+num_training_updates):
     (data, lb) = next(iter(training_loader))
     data = data.to(device)
