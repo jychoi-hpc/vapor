@@ -430,9 +430,11 @@ class Model(nn.Module):
 def load_checkpoint(DIR, prefix, model):
     import hashlib
     import sys
-    hcode = hashlib.md5(str(model).encode()).hexdigest()
-    print ('hash:', hcode)
-    _prefix = '%s/%s-%s'%(DIR, prefix, hcode)
+
+    ## (2020/06) no use anymore
+    # hcode = hashlib.md5(str(model).encode()).hexdigest()
+    # print ('hash:', hcode)
+    _prefix = '%s/%s'%(DIR, prefix)
     _istart = None
     _model = None
     _err = None
@@ -455,8 +457,9 @@ def save_checkpoint(DIR, prefix, model, err, epoch):
     import hashlib
     from pathlib import Path
 
-    hcode = hashlib.md5(str(model).encode()).hexdigest()
-    _prefix = '%s/%s-%s'%(DIR, prefix, hcode)
+    ## (2020/06) no use anymore
+    # hcode = hashlib.md5(str(model).encode()).hexdigest()
+    _prefix = '%s/%s'%(DIR, prefix)
     Path(_prefix).mkdir(parents=True, exist_ok=True)
     with open("%s/model.txt"%(_prefix), 'w+') as f:
         f.write(str(model))
@@ -468,172 +471,180 @@ def save_checkpoint(DIR, prefix, model, err, epoch):
         f.write(str(epoch))
     print ("Saved checkpoint: %s"%(fname))
 
-# %%
-# Main start
-parser = argparse.ArgumentParser()
-parser.add_argument('EXP', help='exp')
-parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
-parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
-parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
-parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
-parser.add_argument('--wdir', help='working directory', default=os.getcwd())
-args = parser.parse_args()
+def main():
+    global num_channels
+    global device
 
-logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
-logging.info ('EXP: %s' % args.EXP)
-logging.info ('embedding_dim: %d' % args.embedding_dim)
-logging.info ('DIR: %s' % args.wdir)
+    # %%
+    # Main start
+    parser = argparse.ArgumentParser()
+    parser.add_argument('EXP', help='exp')
+    parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
+    parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
+    parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
+    parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
+    parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
+    parser.add_argument('--wdir', help='working directory', default=os.getcwd())
+    args = parser.parse_args()
 
-# %%
-DIR=args.wdir
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logging.info ('device: %s' % device)
+    logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+    logging.info ('EXP: %s' % args.EXP)
+    logging.info ('embedding_dim: %d' % args.embedding_dim)
+    logging.info ('DIR: %s' % args.wdir)
 
-# %%
-num_channels = 16
+    # %%
+    DIR=args.wdir
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info ('device: %s' % device)
 
-## This is the setting for quality?
-if args.EXP == 'm1':
-    batch_size = 256
+    # %%
+    num_channels = 16
 
-    num_hiddens = args.num_hiddens
-    num_residual_hiddens = 32
-    num_residual_layers = 2
+    ## This is the setting for quality?
+    if args.EXP == 'm1':
+        batch_size = args.batch_size
 
-    embedding_dim = args.embedding_dim
-    num_embeddings = 512
+        num_hiddens = args.num_hiddens
+        num_residual_hiddens = 32
+        num_residual_layers = 2
 
-    commitment_cost = 0.25
-    decay = 0.99
-    learning_rate = 1e-3
+        embedding_dim = args.embedding_dim
+        num_embeddings = 512
 
-prefix='xgc-%s-edim%d-nhidden%d'%(args.EXP, args.embedding_dim, args.num_hiddens)
-logging.info ('prefix: %s' % prefix)
+        commitment_cost = 0.25
+        decay = 0.99
+        learning_rate = 1e-3
 
-# %%
-with ad2.open('data/xgc.f0.mesh.bp', 'r') as f:
-    f0_dvp = f.read('f0_dvp')
-    f0_nmu = f.read('f0_nmu')
-    f0_nvp = f.read('f0_nvp')
-    f0_T_ev = f.read('f0_T_ev')
-    f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
-    nnodes = f.read('n_n')
+    prefix='xgc-%s-batch%d-edim%d-nhidden%d'%(args.EXP, args.batch_size, args.embedding_dim, args.num_hiddens)
+    logging.info ('prefix: %s' % prefix)
 
-f0_filenames = (13_000,)
-#f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
-#f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
-f0_data_list = list()
-for fname in f0_filenames:
-    print ('Reading:', fname)
-    f0_data_list.append(read_f0(fname, full=True))
+    # %%
+    with ad2.open('data/xgc.f0.mesh.bp', 'r') as f:
+        f0_dvp = f.read('f0_dvp')
+        f0_nmu = f.read('f0_nmu')
+        f0_nvp = f.read('f0_nvp')
+        f0_T_ev = f.read('f0_T_ev')
+        f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
+        nnodes = f.read('n_n')
 
-lst = list(zip(*f0_data_list))
-Zif = np.r_[(lst[0])]
-zmu = np.r_[(lst[1])]
-zsig = np.r_[(lst[2])]
+    f0_filenames = (13_000,)
+    #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
+    #f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
+    f0_data_list = list()
+    for fname in f0_filenames:
+        print ('Reading:', fname)
+        f0_data_list.append(read_f0(fname, full=True))
 
-print (Zif.shape, zmu.shape, zsig.shape)
-print ('Minimum training epoch:', Zif.shape[0]/batch_size)
+    lst = list(zip(*f0_data_list))
+    Zif = np.r_[(lst[0])]
+    zmu = np.r_[(lst[1])]
+    zsig = np.r_[(lst[2])]
 
-lx = list()
-ly = list()
-for i in range(0,len(Zif)-num_channels,num_channels):
-    X = Zif[i:i+num_channels,:,:]
-    mu = zmu[i:i+num_channels]
-    sig = zsig[i:i+num_channels]
-    N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
-    lx.append(N)
-    ly.append(np.array([i,], dtype=int))
+    print (Zif.shape, zmu.shape, zsig.shape)
+    print ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
-data_variance = np.var(lx)
-print ('data_variance', data_variance)
+    lx = list()
+    ly = list()
+    for i in range(0,len(Zif)-num_channels,num_channels):
+        X = Zif[i:i+num_channels,:,:]
+        mu = zmu[i:i+num_channels]
+        sig = zsig[i:i+num_channels]
+        N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
+        lx.append(N)
+        ly.append(np.array([i,], dtype=int))
 
-# %% 
-# Loadding
-X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.10, random_state=42)
-training_data = torch.utils.data.TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
-validation_data = torch.utils.data.TensorDataset(torch.Tensor(X_test), torch.Tensor(y_test))    
+    data_variance = np.var(lx)
+    print ('data_variance', data_variance)
 
-training_loader = DataLoader(training_data, 
-                             batch_size=batch_size, 
-                             shuffle=True,
-                             pin_memory=True)
-validation_loader = DataLoader(validation_data,
-                               batch_size=batch_size,
-                               shuffle=True,
-                               pin_memory=True)
+    # %% 
+    # Loadding
+    X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.10, random_state=42)
+    training_data = torch.utils.data.TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
+    validation_data = torch.utils.data.TensorDataset(torch.Tensor(X_test), torch.Tensor(y_test))    
 
-# %% 
-# Model
-model = Model(num_hiddens, num_residual_layers, num_residual_hiddens,
-            num_embeddings, embedding_dim, 
-            commitment_cost, decay).to(device)
+    training_loader = DataLoader(training_data, 
+                                batch_size=batch_size, 
+                                shuffle=True,
+                                pin_memory=True)
+    validation_loader = DataLoader(validation_data,
+                                batch_size=batch_size,
+                                shuffle=True,
+                                pin_memory=True)
 
-optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
+    # %% 
+    # Model
+    model = Model(num_hiddens, num_residual_layers, num_residual_hiddens,
+                num_embeddings, embedding_dim, 
+                commitment_cost, decay).to(device)
 
-model.train()
-train_res_recon_error = []
-train_res_perplexity = []
-istart = 0
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
-# %%
-# Load checkpoint
-_istart, _model = load_checkpoint(DIR, prefix, model)
-if _model is not None:
-    istart = _istart
-    model = _model
-print (istart)
+    model.train()
+    train_res_recon_error = []
+    train_res_perplexity = []
+    istart = 0
 
-# %%
-num_training_updates=args.num_training_updates
-logging.info ('Training: %d' % num_training_updates)
-model.train()
-t0 = time.time()
-for i in xrange(istart, istart+num_training_updates):
-    (data, lb) = next(iter(training_loader))
-    data = data.to(device)
-    optimizer.zero_grad() # clear previous gradients
-    
-    vq_loss, data_recon, perplexity = model(data)
-    recon_error = torch.mean((data_recon - data)**2) / data_variance
-    loss = recon_error + vq_loss
-    #print (recon_error, vq_loss)
-#     with torch.no_grad():
-#         den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, zmu, zsig, data_recon)
-#         ds = np.mean(data_recon.cpu().data.numpy()**2)
-#         print (recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+    # %%
+    # Load checkpoint
+    _istart, _model = load_checkpoint(DIR, prefix, model)
+    if _model is not None:
+        istart = _istart
+        model = _model
+    print (istart)
 
-    # Here is to add physics information:
-    # # loss += den_err/ds * torch.sum(data_recon)
-#     loss += u_para_err/ds * torch.mean(data_recon**2)
-    # # loss += T_perp_err/ds * torch.sum(data_recon)
-    # # loss += T_para_err/ds * torch.sum(data_recon)
+    # %%
+    num_training_updates=args.num_training_updates
+    logging.info ('Training: %d' % num_training_updates)
+    model.train()
+    t0 = time.time()
+    for i in xrange(istart, istart+num_training_updates):
+        (data, lb) = next(iter(training_loader))
+        data = data.to(device)
+        optimizer.zero_grad() # clear previous gradients
+        
+        vq_loss, data_recon, perplexity = model(data)
+        recon_error = torch.mean((data_recon - data)**2) / data_variance
+        loss = recon_error + vq_loss
+        #print (recon_error, vq_loss)
+    #     with torch.no_grad():
+    #         den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, zmu, zsig, data_recon)
+    #         ds = np.mean(data_recon.cpu().data.numpy()**2)
+    #         print (recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
 
-    loss.backward()
-    optimizer.step()
-    #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
-    
-    train_res_recon_error.append(recon_error.item())
-    train_res_perplexity.append(perplexity.item())
+        # Here is to add physics information:
+        # # loss += den_err/ds * torch.sum(data_recon)
+    #     loss += u_para_err/ds * torch.mean(data_recon**2)
+        # # loss += T_perp_err/ds * torch.sum(data_recon)
+        # # loss += T_para_err/ds * torch.sum(data_recon)
 
-    if (i+1) % 1_000 == 0:
-        print('%d iterations' % (i+1))
-        print('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
-        print('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
-        print('time: %.3f' % (time.time()-t0))
-        print ('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
-        print()
-    
-    if (i+1) % 10_000 == 0:
-        save_checkpoint(DIR, prefix, model, train_res_recon_error, i+1)
-istart=istart+num_training_updates
+        loss.backward()
+        optimizer.step()
+        #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
+        
+        train_res_recon_error.append(recon_error.item())
+        train_res_perplexity.append(perplexity.item())
 
-# %%
-model.eval()
-(valid_originals, valid_labels) = next(iter(validation_loader))
-valid_originals = valid_originals.to(device)
+        if (i+1) % 1_000 == 0:
+            print('%d iterations' % (i+1))
+            print('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
+            print('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
+            print('time: %.3f' % (time.time()-t0))
+            print ('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
+            print()
+        
+        if (i+1) % 10_000 == 0:
+            save_checkpoint(DIR, prefix, model, train_res_recon_error, i+1)
+    istart=istart+num_training_updates
 
-x = model._encoder(valid_originals)
-logging.info ('Original: %s' % (valid_originals.shape,))
-logging.info ('Encoding: %s' % (x.shape,))
-logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
+    # %%
+    model.eval()
+    (valid_originals, valid_labels) = next(iter(validation_loader))
+    valid_originals = valid_originals.to(device)
+
+    x = model._encoder(valid_originals)
+    logging.info ('Original: %s' % (valid_originals.shape,))
+    logging.info ('Encoding: %s' % (x.shape,))
+    logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
+
+if __name__ == "__main__":
+    main()
