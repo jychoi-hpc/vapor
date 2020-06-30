@@ -148,14 +148,14 @@ def read_f0(istep, full=False):
         i_f = f.read('i_f')
         e_f = f.read('e_f')
     i_f = np.append(i_f, i_f[...,30:31], axis=3)
-    e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    # e_f = np.append(e_f, e_f[...,30:31], axis=3)
     
     if full:
         Zif = np.moveaxis(i_f, 1, 2).reshape((16*12458,32,32))
-        Zef = np.moveaxis(i_f, 1, 2).reshape((16*12458,32,32))
+        # Zef = np.moveaxis(e_f, 1, 2).reshape((16*12458,32,32))
     else:
         Zif = np.einsum('ijkl->kjl', i_f)/sml_nphi
-        Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
+        # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
     zmu = np.mean(Zif, axis=(1,2))
     zsig = np.std(Zif, axis=(1,2))
     #Zif.shape, zmu.shape, zsig.shape
@@ -484,7 +484,7 @@ def main():
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
     parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
-    parser.add_argument('--wdir', help='working directory', default=os.getcwd())
+    parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
