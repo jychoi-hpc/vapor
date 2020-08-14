@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 
 from six.moves import xrange
+from mpi4py import MPI
 
 # %%
 import torch
@@ -161,6 +162,25 @@ def read_f0(istep, full=False):
     #Zif.shape, zmu.shape, zsig.shape
 
     return (Zif, zmu, zsig)
+
+# %%
+""" Gradient averaging. """
+def average_gradients(model):
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+    #import pdb; pdb.set_trace()
+    for i, (name, param) in enumerate(model.named_parameters()):
+        if param.grad is not None:
+            #print ('[%d] %d: %s (b): %f '%(rank, i, name, param.grad.data.sum()))
+            x = comm.allreduce(param.grad.data, op=MPI.SUM)
+            param.grad.data = x/size
+            #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.grad.data.sum()))
+        else:
+            #print ('[%d] %d: %s (b): %f '%(rank, i, name, param.data.sum()))
+            x = comm.allreduce(param.data, op=MPI.SUM)
+            param.data = x/size
+            #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
 class VectorQuantizer(nn.Module):
@@ -475,6 +495,10 @@ def main():
     global num_channels
     global device
 
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
     # %%
     # Main start
     parser = argparse.ArgumentParser()
@@ -487,7 +511,10 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+    fmt = '[%d:%%(levelname)s] %%(message)s'%(rank)
+    print (fmt)
+    #logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+    logging.basicConfig(level=logging.DEBUG, format=fmt)
     logging.info ('EXP: %s' % args.EXP)
     logging.info ('embedding_dim: %d' % args.embedding_dim)
     logging.info ('DIR: %s' % args.wdir)
@@ -552,12 +579,13 @@ def main():
         f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
         nnodes = f.read('n_n')
 
-    f0_filenames = (13_000,)
+    f0_filenames = (13_000, 10_000)
     #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
     #f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
+    f0_filenames = np.array_split(np.array(f0_filenames), size)[rank]
     f0_data_list = list()
     for fname in f0_filenames:
-        print ('Reading:', fname)
+        logging.info (f'Reading: {fname}')
         f0_data_list.append(read_f0(fname, full=True))
 
     lst = list(zip(*f0_data_list))
@@ -643,6 +671,10 @@ def main():
         # # loss += T_para_err/ds * torch.sum(data_recon)
 
         loss.backward()
+        if (i+1) % 1_000 == 0:
+            ## Gradient averaging
+            logging.info('iteration %d: gradient averaging' % (i+1))
+            average_gradients(model)
         optimizer.step()
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
