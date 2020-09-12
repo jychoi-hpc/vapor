@@ -150,8 +150,12 @@ def read_f0(istep, dir='data', full=False):
     with ad2.open(fname, 'r') as f:
         i_f = f.read('i_f')
         e_f = f.read('e_f')
-    i_f = np.append(i_f, i_f[...,30:31], axis=3)
-    # e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    if i_f.shape[3] == 31:
+        i_f = np.append(i_f, i_f[...,30:31], axis=3)
+        # e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    if i_f.shape[3] == 39:
+        i_f = np.append(i_f, i_f[...,38:39], axis=3)
+        i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
     
     if full:
         Zif = np.moveaxis(i_f, 1, 2).reshape((-1,i_f.shape[1],i_f.shape[3]))
@@ -589,6 +593,8 @@ def main():
     #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
     #f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
     f0_filenames = args.timesteps
+    if len(f0_filenames) == 0:
+        print ()
     f0_filenames = np.array_split(np.array(f0_filenames), size)[rank]
     f0_data_list = list()
     logging.info (f'Data dir: {args.datadir}')
