@@ -145,8 +145,8 @@ def physics_loss(data, lb, zmu, zsig, data_recon):
     return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
 
 # %%
-def read_f0(istep, full=False):
-    fname = 'd3d/restart_dir/xgc.f0.%05d.bp'%istep
+def read_f0(istep, dir='data', full=False):
+    fname = '%s/restart_dir/xgc.f0.%05d.bp'%(dir,istep)
     with ad2.open(fname, 'r') as f:
         i_f = f.read('i_f')
         e_f = f.read('e_f')
@@ -154,8 +154,7 @@ def read_f0(istep, full=False):
     # e_f = np.append(e_f, e_f[...,30:31], axis=3)
     
     if full:
-        Zif = np.moveaxis(i_f, 1, 2).reshape((16*12458,32,32))
-        # Zef = np.moveaxis(e_f, 1, 2).reshape((16*12458,32,32))
+        Zif = np.moveaxis(i_f, 1, 2).reshape((-1,i_f.shape[1],i_f.shape[3]))
     else:
         Zif = np.einsum('ijkl->kjl', i_f)/sml_nphi
         # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
@@ -504,20 +503,25 @@ def main():
     # %%
     # Main start
     parser = argparse.ArgumentParser()
-    parser.add_argument('EXP', help='exp name')
+    parser.add_argument('--exp', help='exp', default='m1')
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
     parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
+    parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
+    parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
+    parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int, default=1_000)
+    parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
+    parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
     args = parser.parse_args()
 
     fmt = '[%d:%%(levelname)s] %%(message)s'%(rank)
     print (fmt)
     #logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
     logging.basicConfig(level=logging.DEBUG, format=fmt)
-    logging.info ('EXP: %s' % args.EXP)
+    logging.info ('EXP: %s' % args.exp)
     logging.info ('embedding_dim: %d' % args.embedding_dim)
     logging.info ('DIR: %s' % args.wdir)
 
@@ -569,11 +573,11 @@ def main():
     decay = 0.99
     learning_rate = 1e-3
 
-    prefix='xgc-%s-batch%d-edim%d-nhidden%d'%(args.EXP, args.batch_size, args.embedding_dim, args.num_hiddens)
+    prefix='xgc-%s-batch%d-edim%d-nhidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens)
     logging.info ('prefix: %s' % prefix)
 
     # %%
-    with ad2.open('data/xgc.f0.mesh.bp', 'r') as f:
+    with ad2.open('%s/xgc.f0.mesh.bp'%(args.datadir), 'r') as f:
         f0_dvp = f.read('f0_dvp')
         f0_nmu = f.read('f0_nmu')
         f0_nvp = f.read('f0_nvp')
@@ -581,14 +585,16 @@ def main():
         f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
         nnodes = f.read('n_n')
 
-    f0_filenames = (13_000, 10_000)
+    #f0_filenames = (13_000, 10_000)
     #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
     #f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
+    f0_filenames = args.timesteps
     f0_filenames = np.array_split(np.array(f0_filenames), size)[rank]
     f0_data_list = list()
+    logging.info (f'Data dir: {args.datadir}')
     for fname in f0_filenames:
         logging.info (f'Reading: {fname}')
-        f0_data_list.append(read_f0(fname, full=True))
+        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True))
 
     lst = list(zip(*f0_data_list))
     Zif = np.r_[(lst[0])]
@@ -658,6 +664,7 @@ def main():
         optimizer.zero_grad() # clear previous gradients
         
         vq_loss, data_recon, perplexity = model(data)
+        print ('data,data_recon:', data.shape, data_recon.shape)
         recon_error = torch.mean((data_recon - data)**2) / data_variance
         loss = recon_error + vq_loss
         #print (recon_error, vq_loss)
@@ -673,7 +680,7 @@ def main():
         # # loss += T_para_err/ds * torch.sum(data_recon)
 
         loss.backward()
-        if i % 1_000 == 0:
+        if i % args.average_interval == 0:
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i+1))
             average_gradients(model)
@@ -683,7 +690,7 @@ def main():
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
 
-        if i % 1_000 == 0:
+        if i % args.log_interval == 0:
             logging.info('%d iterations' % (i))
             logging.info('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
             logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
@@ -691,7 +698,7 @@ def main():
             logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
             logging.info('')
         
-        if i % 10_000 == 0:
+        if i % args.checkpoint_interval == 0:
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i)
     istart=istart+num_training_updates
 
