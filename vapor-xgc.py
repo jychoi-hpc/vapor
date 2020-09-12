@@ -146,7 +146,7 @@ def physics_loss(data, lb, zmu, zsig, data_recon):
 
 # %%
 def read_f0(istep, full=False):
-    fname = 'data/xgc.f0.%05d.bp'%istep
+    fname = 'd3d/restart_dir/xgc.f0.%05d.bp'%istep
     with ad2.open(fname, 'r') as f:
         i_f = f.read('i_f')
         e_f = f.read('e_f')
@@ -684,15 +684,15 @@ def main():
         train_res_perplexity.append(perplexity.item())
 
         if i % 1_000 == 0:
-            print('%d iterations' % (i+1))
-            print('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
-            print('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
-            print('time: %.3f' % (time.time()-t0))
-            print ('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
-            print()
+            logging.info('%d iterations' % (i))
+            logging.info('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
+            logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
+            logging.info('time: %.3f' % (time.time()-t0))
+            logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
+            logging.info('')
         
         if i % 10_000 == 0:
-            save_checkpoint(DIR, prefix, model, train_res_recon_error, i+1)
+            save_checkpoint(DIR, prefix, model, train_res_recon_error, i)
     istart=istart+num_training_updates
 
     # %%
@@ -706,11 +706,11 @@ def main():
     logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
 
 if __name__ == "__main__":
+    main()
     #with profiler.profile() as prof:
     # from pytracing import TraceProfiler
     # tp = TraceProfiler(output=open('trace.out', 'wb'))
     # with tp.traced():
     #     main()
-    main()
     #prof.export_chrome_trace("trace.json")
     
