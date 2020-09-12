@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 
 import matplotlib.pyplot as plt
@@ -15,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.optim as optim
+import torch.autograd.profiler as profiler
 
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
@@ -635,13 +637,13 @@ def main():
     model.train()
     train_res_recon_error = []
     train_res_perplexity = []
-    istart = 0
+    istart = 1
 
     # %%
     # Load checkpoint
     _istart, _model = load_checkpoint(DIR, prefix, model)
     if _model is not None:
-        istart = _istart
+        istart = _istart + 1
         model = _model
     print (istart)
 
@@ -671,7 +673,7 @@ def main():
         # # loss += T_para_err/ds * torch.sum(data_recon)
 
         loss.backward()
-        if (i+1) % 1_000 == 0:
+        if i % 1_000 == 0:
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i+1))
             average_gradients(model)
@@ -681,7 +683,7 @@ def main():
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
 
-        if (i+1) % 1_000 == 0:
+        if i % 1_000 == 0:
             print('%d iterations' % (i+1))
             print('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
             print('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
@@ -689,7 +691,7 @@ def main():
             print ('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
             print()
         
-        if (i+1) % 10_000 == 0:
+        if i % 10_000 == 0:
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i+1)
     istart=istart+num_training_updates
 
@@ -704,4 +706,11 @@ def main():
     logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
 
 if __name__ == "__main__":
+    #with profiler.profile() as prof:
+    # from pytracing import TraceProfiler
+    # tp = TraceProfiler(output=open('trace.out', 'wb'))
+    # with tp.traced():
+    #     main()
     main()
+    #prof.export_chrome_trace("trace.json")
+    
