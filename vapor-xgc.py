@@ -696,13 +696,13 @@ def main():
         train_res_perplexity.append(perplexity.item())
 
         if i % args.log_interval == 0:
-            logging.info('%d iterations' % (i))
-            logging.info('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
-            logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
-            logging.info('time: %.3f' % (time.time()-t0))
-            logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
+            # logging.info('%d iterations' % (i))
+            # logging.info('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
+            # logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
+            # logging.info('time: %.3f' % (time.time()-t0))
+            # logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
             logging.info(f'Loss {i}: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {len(training_loader.dataset)} {len(data)}')
-            logging.info('')
+            # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i)
