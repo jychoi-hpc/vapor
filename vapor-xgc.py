@@ -670,7 +670,6 @@ def main():
         optimizer.zero_grad() # clear previous gradients
         
         vq_loss, data_recon, perplexity = model(data)
-        print ('data,data_recon:', data.shape, data_recon.shape)
         recon_error = torch.mean((data_recon - data)**2) / data_variance
         loss = recon_error + vq_loss
         #print (recon_error, vq_loss)
@@ -688,7 +687,7 @@ def main():
         loss.backward()
         if i % args.average_interval == 0:
             ## Gradient averaging
-            logging.info('iteration %d: gradient averaging' % (i+1))
+            logging.info('iteration %d: gradient averaging' % (i))
             average_gradients(model)
         optimizer.step()
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
