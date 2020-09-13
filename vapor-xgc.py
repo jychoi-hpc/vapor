@@ -701,7 +701,8 @@ def main():
             # logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
             # logging.info('time: %.3f' % (time.time()-t0))
             # logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
-            logging.info(f'Loss {i}: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:])} {np.mean(train_res_perplexity[-args.log_interval:])}')
+            logging.info(f'{i} Loss: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {len(training_loader.dataset)} {len(data)}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
