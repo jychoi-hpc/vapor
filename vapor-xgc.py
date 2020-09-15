@@ -607,7 +607,7 @@ def main():
     zmu = np.r_[(lst[1])]
     zsig = np.r_[(lst[2])]
 
-    print (Zif.shape, zmu.shape, zsig.shape)
+    print ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     print ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
     lx = list()
