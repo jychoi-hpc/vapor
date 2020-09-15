@@ -148,8 +148,8 @@ def physics_loss(data, lb, zmu, zsig, data_recon):
 def read_f0(istep, dir='data', full=False):
     fname = '%s/restart_dir/xgc.f0.%05d.bp'%(dir,istep)
     with ad2.open(fname, 'r') as f:
-        i_f = f.read('i_f')
-        e_f = f.read('e_f')
+        i_f = f.read('i_f').astype('float32')
+        #e_f = f.read('e_f')
     if i_f.shape[3] == 31:
         i_f = np.append(i_f, i_f[...,30:31], axis=3)
         # e_f = np.append(e_f, e_f[...,30:31], axis=3)
