@@ -160,7 +160,7 @@ def read_f0(istep, dir='data', full=False):
     if full:
         Zif = np.moveaxis(i_f, 1, 2).reshape((-1,i_f.shape[1],i_f.shape[3]))
     else:
-        Zif = np.einsum('ijkl->kjl', i_f)/sml_nphi
+        Zif = np.einsum('ijkl->kjl', i_f)/i_f.shape[0]
         # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
     zmu = np.mean(Zif, axis=(1,2))
     zsig = np.std(Zif, axis=(1,2))
