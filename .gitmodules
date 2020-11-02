@@ -1,0 +1,3 @@
+[submodule "xgc4py"]
+	path = xgc4py
+	url = git@github.com:jychoi-hpc/xgc4py.git
