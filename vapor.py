@@ -8,7 +8,6 @@ import time
 from datetime import datetime
 
 from six.moves import xrange
-from mpi4py import MPI
 
 # %%
 import torch
@@ -28,6 +27,20 @@ from sklearn.model_selection import train_test_split
 import logging
 import os
 import argparse
+
+# %%
+def adios2_get_shape(f, varname):
+    nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
+    shape = f.available_variables()[varname]['Shape']
+    lshape = None
+    if shape == '':
+        ## Accessing Adios1 file
+        ## Read data and figure out
+        v = f.read(varname)
+        lshape = v.shape
+    else:
+        lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
+    return (nstep, lshape)
 
 # %%
 def f0_diag(isp, f0_inode1, ndata, f0_nmu, f0_nvp, f0_T_ev, f0_grid_vol_vonly, f0_f, f0_dvp):
@@ -145,32 +158,54 @@ def physics_loss(data, lb, zmu, zsig, data_recon):
     return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
 
 # %%
-def read_f0(istep, dir='data', full=False):
+def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
     fname = '%s/restart_dir/xgc.f0.%05d.bp'%(dir,istep)
     with ad2.open(fname, 'r') as f:
-        i_f = f.read('i_f').astype('float32')
+        nstep, nsize = adios2_get_shape(f, 'i_f')
+        ndim = len(nsize)
+        nphi = nsize[0]
+        nnodes = nsize[2] if nnodes is None else nnodes
+        nmu = nsize[1]
+        nvp = nsize[3]
+        start = (0,0,inode,0)
+        count = (nphi,nmu,nnodes,nvp)
+        print ("Reading: ", start, count)
+        i_f = f.read('i_f', start=start, count=count).astype('float32')
         #e_f = f.read('e_f')
+
     if i_f.shape[3] == 31:
         i_f = np.append(i_f, i_f[...,30:31], axis=3)
         # e_f = np.append(e_f, e_f[...,30:31], axis=3)
     if i_f.shape[3] == 39:
         i_f = np.append(i_f, i_f[...,38:39], axis=3)
         i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
-    
+
     if full:
         Zif = np.moveaxis(i_f, 1, 2).reshape((-1,i_f.shape[1],i_f.shape[3]))
     else:
-        Zif = np.einsum('ijkl->kjl', i_f)/i_f.shape[0]
-        # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
+        if iphi is not None:
+            Zif = np.moveaxis(i_f, 1, 2)
+            Zif = Zif[iphi,:]
+        else:
+            Zif = np.einsum('ijkl->kjl', i_f)/i_f.shape[0]
+            # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
+    
     zmu = np.mean(Zif, axis=(1,2))
     zsig = np.std(Zif, axis=(1,2))
+    zmin = np.min(Zif, axis=(1,2))
+    zmax = np.max(Zif, axis=(1,2))
     #Zif.shape, zmu.shape, zsig.shape
 
-    return (Zif, zmu, zsig)
+    return (Zif, zmu, zsig, zmin, zmax)
 
 # %%
 """ Gradient averaging. """
 def average_gradients(model):
+    try:
+        MPI
+    except NameError:
+        return
+    
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
@@ -500,10 +535,6 @@ def main():
     global num_channels
     global device
 
-    comm = MPI.COMM_WORLD
-    size = comm.Get_size()
-    rank = comm.Get_rank()
-
     # %%
     # Main start
     parser = argparse.ArgumentParser()
@@ -519,7 +550,18 @@ def main():
     parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
+    parser.add_argument('--nompi', help='nompi', action='store_true')
     args = parser.parse_args()
+
+    if not args.nompi:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        size = comm.Get_size()
+        rank = comm.Get_rank()
+    else:
+        comm = None
+        size = 1
+        rank = 0
 
     fmt = '[%d:%%(levelname)s] %%(message)s'%(rank)
     print (fmt)
@@ -600,12 +642,19 @@ def main():
     logging.info (f'Data dir: {args.datadir}')
     for fname in f0_filenames:
         logging.info (f'Reading: {fname}')
-        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True))
+        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True, inode=0, nnodes=nnodes%batch_size))
 
     lst = list(zip(*f0_data_list))
     Zif = np.r_[(lst[0])]
     zmu = np.r_[(lst[1])]
     zsig = np.r_[(lst[2])]
+    zmin = np.r_[(lst[3])]
+    zmax = np.r_[(lst[4])]
+    ## z-score normalization
+    #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
+    ## min-max normalization
+    #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
+    Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
 
     print ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     print ('Minimum training epoch:', Zif.shape[0]/batch_size)
@@ -616,11 +665,13 @@ def main():
         X = Zif[i:i+num_channels,:,:]
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
-        N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
+        N = X
+        ## z-score normalization
+        #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
         ly.append(np.array([i,], dtype=int))
 
-    data_variance = np.var(lx)
+    data_variance = np.var(lx, dtype=np.float64)
     print ('data_variance', data_variance)
 
     # %% 
@@ -670,7 +721,8 @@ def main():
         optimizer.zero_grad() # clear previous gradients
         
         vq_loss, data_recon, perplexity = model(data)
-        recon_error = torch.mean((data_recon - data)**2) / data_variance
+        #recon_error = torch.mean((data_recon - data)**2) / data_variance
+        recon_error = torch.mean((data_recon - data)**2) 
         loss = recon_error + vq_loss
         #print (recon_error, vq_loss)
     #     with torch.no_grad():
