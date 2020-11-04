@@ -28,6 +28,10 @@ import logging
 import os
 import argparse
 
+import xgc4py
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # %%
 def adios2_get_shape(f, varname):
     nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
@@ -410,7 +414,7 @@ class Encoder(nn.Module):
 
 # %%
 class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, num_channels):
         super(Decoder, self).__init__()
         
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
@@ -455,7 +459,7 @@ class Decoder(nn.Module):
 
 # %%
 class Model(nn.Module):
-    def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens, 
+    def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0):
         super(Model, self).__init__()
         
@@ -475,7 +479,7 @@ class Model(nn.Module):
         self._decoder = Decoder(embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
-                                num_residual_hiddens)
+                                num_residual_hiddens, num_channels)
 
     def forward(self, x):
         #import pdb; pdb.set_trace()
@@ -532,8 +536,8 @@ def save_checkpoint(DIR, prefix, model, err, epoch):
     print ("Saved checkpoint: %s"%(fname))
 
 def main():
-    global num_channels
-    global device
+    #global num_channels
+    #global device
 
     # %%
     # Main start
@@ -623,13 +627,16 @@ def main():
     logging.info ('prefix: %s' % prefix)
 
     # %%
-    with ad2.open('%s/xgc.f0.mesh.bp'%(args.datadir), 'r') as f:
-        f0_dvp = f.read('f0_dvp')
-        f0_nmu = f.read('f0_nmu')
-        f0_nvp = f.read('f0_nvp')
-        f0_T_ev = f.read('f0_T_ev')
-        f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
-        nnodes = f.read('n_n')
+    xgcexp = xgc4py.XGC(args.datadir)
+    nnodes = xgcexp.mesh.nnodes
+    
+#     with ad2.open('%s/xgc.f0.mesh.bp'%(args.datadir), 'r') as f:
+#         f0_dvp = f.read('f0_dvp')
+#         f0_nmu = f.read('f0_nmu')
+#         f0_nvp = f.read('f0_nvp')
+#         f0_T_ev = f.read('f0_T_ev')
+#         f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
+#         nnodes = f.read('n_n')
 
     #f0_filenames = (13_000, 10_000)
     #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
@@ -642,7 +649,7 @@ def main():
     logging.info (f'Data dir: {args.datadir}')
     for fname in f0_filenames:
         logging.info (f'Reading: {fname}')
-        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True, inode=0, nnodes=nnodes%batch_size))
+        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True, inode=0, nnodes=nnodes-nnodes%batch_size))
 
     lst = list(zip(*f0_data_list))
     Zif = np.r_[(lst[0])]
@@ -691,7 +698,7 @@ def main():
 
     # %% 
     # Model
-    model = Model(num_hiddens, num_residual_layers, num_residual_hiddens,
+    model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                 num_embeddings, embedding_dim, 
                 commitment_cost, decay).to(device)
 
