@@ -31,10 +31,126 @@ import argparse
 import xgc4py
 from tqdm import tqdm
 
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import multiprocessing as mp
+import random
+
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 xgcexp = None
 Z0, zmu, zsig, zmin, zmax = None, None, None, None, None
+pidmap = dict()
+args = None
+comm, size, rank = None, 1, 0
+
+def hello(counter):
+    global args
+    global pidmap
+    global comm, size, rank
+
+    with counter.get_lock():
+        counter.value += 1
+        pidmap[os.getpid()] = (args.nworkers+1)*rank + counter.value
+    affinity = None
+    ## Set affinity when using ProcessPoolExecutor
+    if hasattr(os, 'sched_getaffinity'):
+        ## We leave rank-0 core for the main process
+        affinity_mask = {pidmap[os.getpid()]%args.ncorespernode}
+        os.sched_setaffinity(0, affinity_mask)
+        affinity = os.sched_getaffinity(0)
+    logging.info(f"\tWorker: init. rank={rank} pid={os.getpid()} ID={pidmap[os.getpid()]} affinity={affinity}")
+    # time.sleep(random.randint(1, 5))
+    return 0
+
+# %%
+def dowork(X, inode, num_channels):
+    global xgcexp
+    global Z0, zmu, zsig, zmin, zmax
+
+    nnodes = len(Z0)//xgcexp.nphi
+    nvp0 = xgcexp.f0mesh.f0_nmu+1
+    nvp1 = xgcexp.f0mesh.f0_nvp*2+1
+
+    # print ("dowork:", inode, os.getpid())
+    mn = zmin[inode:inode+num_channels]
+    mx = zmax[inode:inode+num_channels]
+
+    #f0_f = data[i].cpu().data.numpy()
+    f0_f = Z0[inode:inode+num_channels,:nvp0,:nvp1]
+    #f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+    #f0_f += mn[:,np.newaxis,np.newaxis]
+    den0, u_para0, T_perp0, T_para0, _, _ = \
+        xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+
+    f0_f = X
+    f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+    f0_f += mn[:,np.newaxis,np.newaxis]
+    den1, u_para1, T_perp1, T_para1, _, _ = \
+        xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+    
+    _den_err = np.mean((den0-den1)**2)/np.var(den0)
+    _u_para_err = np.mean((u_para0-u_para1)**2)/np.var(u_para0)
+    _T_perp_err = np.mean((T_perp0-T_perp1)**2)/np.var(T_perp0)
+    _T_para_err = np.mean((T_para0-T_para1)**2)/np.var(T_para0)
+
+    # print ("dowork done:", inode, os.getpid())
+    return (_den_err, _u_para_err, _T_perp_err, _T_para_err)
+
+def physics_loss_con(data, lb, data_recon, executor=None):
+    global args
+    global xgcexp
+    global Z0, zmu, zsig, zmin, zmax
+
+    batch_size, num_channels = data.shape[:2]
+    nnodes = len(Z0)//xgcexp.nphi
+    nvp0 = xgcexp.f0mesh.f0_nmu+1
+    nvp1 = xgcexp.f0mesh.f0_nvp*2+1
+
+    Xbar = data_recon.cpu().data.numpy()
+    
+    den_err = 0.
+    u_para_err = 0.
+    T_perp_err = 0.
+    T_para_err = 0.
+    
+    # counter = mp.Value('i', 0)
+    # with ProcessPoolExecutor(max_workers=args.nworkers, initializer=hello, initargs=(counter,)) as executor:
+    if executor is not None:
+        futures = list()
+        for i in range(batch_size):
+            futures.append(executor.submit(dowork, Xbar[i,...], int(lb[i]), num_channels))
+
+        for f in tqdm(futures):
+            _den_err, _u_para_err, _T_perp_err, _T_para_err = f.result()
+            #_den_err, _u_para_err, _T_perp_err, _T_para_err = dowork(i)
+            den_err += _den_err
+            u_para_err += _u_para_err
+            T_perp_err += _T_perp_err
+            T_para_err += _T_para_err
+
+        # inode = int(lb[i])
+        # mn = zmin[inode:inode+num_channels]
+        # mx = zmax[inode:inode+num_channels]
+
+        # #f0_f = data[i].cpu().data.numpy()
+        # f0_f = Z0[inode:inode+num_channels,:nvp0,:nvp1]
+        # #f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+        # #f0_f += mn[:,np.newaxis,np.newaxis]
+        # den0, u_para0, T_perp0, T_para0, _, _ = \
+        #     xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+
+        # f0_f = Xbar[i,...]
+        # f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+        # f0_f += mn[:,np.newaxis,np.newaxis]
+        # den1, u_para1, T_perp1, T_para1, _, _ = \
+        #     xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+        
+        # den_err += np.mean((den0-den1)**2)/np.var(den0)
+        # u_para_err += np.mean((u_para0-u_para1)**2)/np.var(u_para0)
+        # T_perp_err += np.mean((T_perp0-T_perp1)**2)/np.var(T_perp0)
+        # T_para_err += np.mean((T_para0-T_para1)**2)/np.var(T_para0)
+
+        return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
 
 # %%
 def physics_loss(data, lb, data_recon):
@@ -470,6 +586,9 @@ def main():
     global device
     global xgcexp
     global Z0, zmu, zsig, zmin, zmax
+    global pidmap
+    global args
+    global comm, size, rank
 
     # %%
     # Main start
@@ -487,6 +606,9 @@ def main():
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('--nompi', help='nompi', action='store_true')
+    parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
+    parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int, default=4)
+    parser.add_argument('--ncorespernode', type=int, help='Number of cores per node', default=64)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -511,6 +633,12 @@ def main():
     DIR=args.wdir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info ('device: %s' % device)
+
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+        random.seed(args.seed)
+        if device.type == 'cuda':
+            torch.cuda.manual_seed(args.seed)
 
     # %%
     num_channels = 16
@@ -639,6 +767,8 @@ def main():
     print (istart)
 
     # %%
+    counter = mp.Value('i', 0)
+    executor = ProcessPoolExecutor(max_workers=args.nworkers, initializer=hello, initargs=(counter,))
     num_training_updates=args.num_training_updates
     logging.info ('Training: %d' % num_training_updates)
     model.train()
@@ -652,9 +782,11 @@ def main():
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2) 
         loss = recon_error + vq_loss
-        # den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
-        # ds = np.mean(data_recon.cpu().data.numpy()**2)
-        # print (recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+        den_err, u_para_err, T_perp_err, T_para_err = None, None, None, None
+        ds = None
+        den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
+        ds = np.mean(data_recon.cpu().data.numpy()**2)
+        print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
 
         # Here is to add physics information:
         # loss += den_err/ds * torch.sum(data_recon)
