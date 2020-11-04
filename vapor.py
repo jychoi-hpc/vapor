@@ -29,130 +29,48 @@ import os
 import argparse
 
 import xgc4py
+from tqdm import tqdm
 
+## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+xgcexp = None
+Z0, zmu, zsig, zmin, zmax = None, None, None, None, None
 
 # %%
-def adios2_get_shape(f, varname):
-    nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
-    shape = f.available_variables()[varname]['Shape']
-    lshape = None
-    if shape == '':
-        ## Accessing Adios1 file
-        ## Read data and figure out
-        v = f.read(varname)
-        lshape = v.shape
-    else:
-        lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
-    return (nstep, lshape)
+def physics_loss(data, lb, data_recon):
+    global device
+    global xgcexp
+    global Z0, zmu, zsig, zmin, zmax
 
-# %%
-def f0_diag(isp, f0_inode1, ndata, f0_nmu, f0_nvp, f0_T_ev, f0_grid_vol_vonly, f0_f, f0_dvp):
-    """
-    isp: electron(=0) or ion(=1)
-    (nphi: int)
-    (nnodes: int)
-    f0_inode1: int
-    ndata: int (f0_inode2=f0_inode1+ndata)
-    f0_nmu: int
-    f0_nvp: int
-    f0_T_ev: (nsp, nnodes)
-    f0_grid_vol_vonly: (nsp, nnodes)
-    f0_f: (ndata, f0_nmu, f0_nvp)
-    f0_dvp: double
-    uparr: (1, 1, f0_nmu, f0_inode2-f0_inode1+1, f0_nvp)
-    """
-    if f0_f.ndim == 2:
-        f0_f = f0_f[np.newaxis,:]
-    #print (f0_f.shape, (ndata, f0_nmu+1, f0_nvp*2+1))
-    assert(f0_f.shape[0] == ndata)
-    assert(f0_f.shape[1] == f0_nmu+1)
-    assert(f0_f.shape[2] >= f0_nvp*2+1)
-    
-    sml_e_charge=1.6022E-19  ## electron charge (MKS)
-    sml_ev2j=sml_e_charge
-
-    ptl_e_mass_au=2E-2
-    ptl_mass_au=2E0
-    sml_prot_mass=1.6720E-27 ## proton mass (MKS)
-    ptl_mass = [ptl_e_mass_au*sml_prot_mass, ptl_mass_au*sml_prot_mass]
-
-    ## index: imu, range: [0, f0_nmu]
-    mu_vol = np.ones(f0_nmu+1)
-    mu_vol[0] = 0.5
-    mu_vol[-1] = 0.5
-
-    ## index: ivp, range: [-f0_nvp, f0_nvp]
-    vp_vol = np.ones(f0_nvp*2+1)
-    vp_vol[0] = 0.5
-    vp_vol[-1] = 0.5
-    
-    f0_smu_max = 3.0
-    f0_dsmu = f0_smu_max/f0_nmu
-    mu = (np.arange(f0_nmu+1, dtype=np.float64)*f0_dsmu)**2
-
-    # out
-    den = np.zeros((ndata, f0_nmu+1, 2*f0_nvp+1))
-    u_para = np.zeros((ndata, f0_nmu+1, 2*f0_nvp+1))
-    T_perp = np.zeros((ndata, f0_nmu+1, 2*f0_nvp+1))
-    T_para = np.zeros((ndata, f0_nmu+1, 2*f0_nvp+1))
-
-
-    for inode in range(0, ndata):
-        ## Mesh properties
-        en_th = f0_T_ev[isp,f0_inode1+inode]*sml_ev2j
-        vth = np.sqrt(en_th/ptl_mass[isp])
-        f0_grid_vol = f0_grid_vol_vonly[isp,f0_inode1+inode]
-
-        for imu in range(0, f0_nmu+1):
-            for ivp in range(0, f0_nvp*2+1):
-                ## Vspace properties
-                f = f0_f[inode, imu, ivp] #f0_f(ivp,inode,imu,isp)
-                vol = f0_grid_vol * mu_vol[imu] * vp_vol[ivp]
-                vp = (ivp - f0_nvp) * f0_dvp
-                en = 0.5 * mu[imu]
-
-                den[inode, imu, ivp] = f * vol
-                u_para[inode, imu, ivp] = f * vol * vp * vth
-                T_perp[inode, imu, ivp] = f * vol * en * vth**2 * ptl_mass[isp]
-                
-                en = 0.5 * (vp - u_para[inode, imu, ivp] / vth)**2
-                T_para[inode, imu, ivp] = f * vol * en * vth**2 * ptl_mass[isp]
-
-    for inode in range(0, ndata):
-        u_para[inode,:] = u_para[inode,:]/np.sum(den[inode,:])
-        T_perp[inode,:] = T_perp[inode,:]/np.sum(den[inode,:])/sml_e_charge
-        T_para[inode,:] = 2.0*T_para[inode,:]/np.sum(den[inode,:])/sml_e_charge
-                                        
-    return (den, u_para, T_perp, T_para)
-
-# %%
-def physics_loss(data, lb, zmu, zsig, data_recon):
     batch_size, num_channels = data.shape[:2]
+    nnodes = len(Z0)//xgcexp.nphi
+    nvp0 = xgcexp.f0mesh.f0_nmu+1
+    nvp1 = xgcexp.f0mesh.f0_nvp*2+1
+
+    Xbar = data_recon.cpu().data.numpy()
     
     den_err = 0.
     u_para_err = 0.
     T_perp_err = 0.
     T_para_err = 0.
     
-    for i in range(batch_size):
+    for i in tqdm(range(batch_size)):
         inode = int(lb[i])
-        mu = zmu[inode:inode+num_channels]
-        sig = zsig[inode:inode+num_channels]
+        mn = zmin[inode:inode+num_channels]
+        mx = zmax[inode:inode+num_channels]
 
-        f0_f = data[i].cpu().data.numpy()
-        f0_f *= sig[:,np.newaxis,np.newaxis]
-        f0_f += mu[:,np.newaxis,np.newaxis]
-        den0, u_para0, T_perp0, T_para0 = f0_diag(1, i, num_channels, f0_nmu, f0_nvp, 
-                                              f0_T_ev, f0_grid_vol_vonly, 
-                                              f0_f, f0_dvp)
+        #f0_f = data[i].cpu().data.numpy()
+        f0_f = Z0[inode:inode+num_channels,:nvp0,:nvp1]
+        #f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+        #f0_f += mn[:,np.newaxis,np.newaxis]
+        den0, u_para0, T_perp0, T_para0, _, _ = \
+            xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
 
-        f0_f = data_recon[i].cpu().data.numpy()
-        f0_f *= sig[:,np.newaxis,np.newaxis]
-        f0_f += mu[:,np.newaxis,np.newaxis]
-        den1, u_para1, T_perp1, T_para1 = f0_diag(1, i, num_channels, f0_nmu, f0_nvp, 
-                                              f0_T_ev, f0_grid_vol_vonly, 
-                                              f0_f, f0_dvp)
+        f0_f = Xbar[i,...]
+        f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
+        f0_f += mn[:,np.newaxis,np.newaxis]
+        den1, u_para1, T_perp1, T_para1, _, _ = \
+            xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
         
         den_err += np.mean((den0-den1)**2)/np.var(den0)
         u_para_err += np.mean((u_para0-u_para1)**2)/np.var(u_para0)
@@ -163,6 +81,19 @@ def physics_loss(data, lb, zmu, zsig, data_recon):
 
 # %%
 def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
+    def adios2_get_shape(f, varname):
+        nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
+        shape = f.available_variables()[varname]['Shape']
+        lshape = None
+        if shape == '':
+            ## Accessing Adios1 file
+            ## Read data and figure out
+            v = f.read(varname)
+            lshape = v.shape
+        else:
+            lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
+        return (nstep, lshape)
+
     fname = '%s/restart_dir/xgc.f0.%05d.bp'%(dir,istep)
     with ad2.open(fname, 'r') as f:
         nstep, nsize = adios2_get_shape(f, 'i_f')
@@ -174,7 +105,7 @@ def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
         start = (0,0,inode,0)
         count = (nphi,nmu,nnodes,nvp)
         print ("Reading: ", start, count)
-        i_f = f.read('i_f', start=start, count=count).astype('float32')
+        i_f = f.read('i_f', start=start, count=count).astype('float64')
         #e_f = f.read('e_f')
 
     if i_f.shape[3] == 31:
@@ -536,8 +467,9 @@ def save_checkpoint(DIR, prefix, model, err, epoch):
     print ("Saved checkpoint: %s"%(fname))
 
 def main():
-    #global num_channels
-    #global device
+    global device
+    global xgcexp
+    global Z0, zmu, zsig, zmin, zmax
 
     # %%
     # Main start
@@ -630,20 +562,7 @@ def main():
     xgcexp = xgc4py.XGC(args.datadir)
     nnodes = xgcexp.mesh.nnodes
     
-#     with ad2.open('%s/xgc.f0.mesh.bp'%(args.datadir), 'r') as f:
-#         f0_dvp = f.read('f0_dvp')
-#         f0_nmu = f.read('f0_nmu')
-#         f0_nvp = f.read('f0_nvp')
-#         f0_T_ev = f.read('f0_T_ev')
-#         f0_grid_vol_vonly = f.read('f0_grid_vol_vonly')
-#         nnodes = f.read('n_n')
-
-    #f0_filenames = (13_000, 10_000)
-    #f0_filenames = (13_000, 13_100, 13_200, 13_300, 13_400)
-    #f0_filenames = ('data/xgc.f0.13000.bp', 'data/xgc.f0.13100.bp', 'data/xgc.f0.13200.bp', 'data/xgc.f0.13300.bp', 'data/xgc.f0.13400.bp')
     f0_filenames = args.timesteps
-    if len(f0_filenames) == 0:
-        print ()
     f0_filenames = np.array_split(np.array(f0_filenames), size)[rank]
     f0_data_list = list()
     logging.info (f'Data dir: {args.datadir}')
@@ -652,7 +571,9 @@ def main():
         f0_data_list.append(read_f0(fname, dir=args.datadir, full=True, inode=0, nnodes=nnodes-nnodes%batch_size))
 
     lst = list(zip(*f0_data_list))
-    Zif = np.r_[(lst[0])]
+    global Z0, zmu, zsig, zmin, zmax
+    Z0 = np.r_[(lst[0])]
+    Zif = Z0.copy()
     zmu = np.r_[(lst[1])]
     zsig = np.r_[(lst[2])]
     zmin = np.r_[(lst[3])]
@@ -672,7 +593,7 @@ def main():
         X = Zif[i:i+num_channels,:,:]
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
-        N = X
+        N = X.astype(np.float32)
         ## z-score normalization
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
@@ -731,17 +652,15 @@ def main():
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2) 
         loss = recon_error + vq_loss
-        #print (recon_error, vq_loss)
-    #     with torch.no_grad():
-    #         den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, zmu, zsig, data_recon)
-    #         ds = np.mean(data_recon.cpu().data.numpy()**2)
-    #         print (recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+        # den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
+        # ds = np.mean(data_recon.cpu().data.numpy()**2)
+        # print (recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
 
         # Here is to add physics information:
-        # # loss += den_err/ds * torch.sum(data_recon)
-    #     loss += u_para_err/ds * torch.mean(data_recon**2)
-        # # loss += T_perp_err/ds * torch.sum(data_recon)
-        # # loss += T_para_err/ds * torch.sum(data_recon)
+        # loss += den_err/ds * torch.sum(data_recon)
+        # loss += u_para_err/ds * torch.mean(data_recon**2)
+        # loss += T_perp_err/ds * torch.sum(data_recon)
+        # loss += T_para_err/ds * torch.sum(data_recon)
 
         loss.backward()
         if i % args.average_interval == 0:
