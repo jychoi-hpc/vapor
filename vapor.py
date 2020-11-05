@@ -48,18 +48,22 @@ def hello(counter):
     global pidmap
     global comm, size, rank
 
+    pid = os.getpid()
     with counter.get_lock():
         counter.value += 1
-        pidmap[os.getpid()] = (args.nworkers+1)*rank + counter.value
+        pidmap[pid] = counter.value
+
     affinity = None
     ## Set affinity when using ProcessPoolExecutor
     if hasattr(os, 'sched_getaffinity'):
-        print("affinity", os.sched_getaffinity(0))
-        ## We leave rank-0 core for the main process
-        affinity_mask = {pidmap[os.getpid()]%args.ncorespernode}
-        os.sched_setaffinity(0, affinity_mask)
         affinity = os.sched_getaffinity(0)
-    logging.info(f"\tWorker: init. rank={rank} pid={os.getpid()} ID={pidmap[os.getpid()]} affinity={affinity}")
+        ## We leave rank-0 core for the main process
+        ## No need to set on Summit
+        #i = pidmap[os.getpid()]%args.ncorespernode
+        #affinity_mask = {cid[i]}
+        #os.sched_setaffinity(0, affinity_mask)
+        #affinity = os.sched_getaffinity(0)
+    logging.info(f"\tWorker: init. rank={rank} pid={pid} ID={pidmap[pid]} affinity={affinity}")
     # time.sleep(random.randint(1, 5))
     return 0
 
@@ -832,6 +836,8 @@ def main():
     logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
 
 if __name__ == "__main__":
+    ## (2020/11) Temporary fix. pytorch reset affinity
+    os.system("taskset -p 0xffffffffffffffffffffffffffffffff %d" % os.getpid())
     main()
     #with profiler.profile() as prof:
     # from pytracing import TraceProfiler
