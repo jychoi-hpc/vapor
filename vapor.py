@@ -43,7 +43,8 @@ pidmap = dict()
 args = None
 comm, size, rank = None, 1, 0
 
-def hello(counter):
+# %%
+def init(counter):
     global args
     global pidmap
     global comm, size, rank
@@ -612,8 +613,7 @@ def main():
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('--nompi', help='nompi', action='store_true')
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
-    parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int, default=4)
-    parser.add_argument('--ncorespernode', type=int, help='Number of cores per node', default=168)
+    parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -772,8 +772,12 @@ def main():
     print (istart)
 
     # %%
+    nworkers = args.nworkers if args.nworkers is not None else 8
+    if args.nworkers is None and hasattr(os, 'sched_getaffinity'):
+        nworkers = len(os.sched_getaffinity(0))-1 
+
     counter = mp.Value('i', 0)
-    executor = ProcessPoolExecutor(max_workers=args.nworkers, initializer=hello, initargs=(counter,))
+    executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
     num_training_updates=args.num_training_updates
     logging.info ('Training: %d' % num_training_updates)
     model.train()
@@ -836,8 +840,10 @@ def main():
     logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
 
 if __name__ == "__main__":
-    ## (2020/11) Temporary fix. pytorch reset affinity
+
+    ## (2020/11) Temporary fix. pytorch reset affinity. This is to rollback.
     os.system("taskset -p 0xffffffffffffffffffffffffffffffff %d" % os.getpid())
+    
     main()
     #with profiler.profile() as prof:
     # from pytracing import TraceProfiler
