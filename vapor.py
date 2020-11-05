@@ -9,6 +9,22 @@ from datetime import datetime
 
 from six.moves import xrange
 
+import adios2 as ad2
+from sklearn.model_selection import train_test_split
+
+import logging
+import os
+import argparse
+
+## (2020/11) pytorch is resetting affinity. We need to check before torch.
+_affinity = None
+if hasattr(os, 'sched_getaffinity'):
+    _affinity = os.sched_getaffinity(0)
+
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import multiprocessing as mp
+import random
+
 # %%
 import torch
 import torch.nn as nn
@@ -21,19 +37,8 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
 
-import adios2 as ad2
-from sklearn.model_selection import train_test_split
-
-import logging
-import os
-import argparse
-
 import xgc4py
 from tqdm import tqdm
-
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-import multiprocessing as mp
-import random
 
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -775,6 +780,7 @@ def main():
     nworkers = args.nworkers if args.nworkers is not None else 8
     if args.nworkers is None and hasattr(os, 'sched_getaffinity'):
         nworkers = len(os.sched_getaffinity(0))-1 
+    logging.info('Nworkers: %d'%nworkers)
 
     counter = mp.Value('i', 0)
     executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
@@ -842,7 +848,8 @@ def main():
 if __name__ == "__main__":
 
     ## (2020/11) Temporary fix. pytorch reset affinity. This is to rollback.
-    os.system("taskset -p 0xffffffffffffffffffffffffffffffff %d" % os.getpid())
+    if hasattr(os, 'sched_getaffinity'):
+        os.sched_setaffinity(0, _affinity)
     
     main()
     #with profiler.profile() as prof:
