@@ -54,6 +54,7 @@ def hello(counter):
     affinity = None
     ## Set affinity when using ProcessPoolExecutor
     if hasattr(os, 'sched_getaffinity'):
+        print("affinity", os.sched_getaffinity(0))
         ## We leave rank-0 core for the main process
         affinity_mask = {pidmap[os.getpid()]%args.ncorespernode}
         os.sched_setaffinity(0, affinity_mask)
@@ -118,7 +119,7 @@ def physics_loss_con(data, lb, data_recon, executor=None):
     if executor is not None:
         futures = list()
         for i in range(batch_size):
-            futures.append(executor.submit(dowork, Xbar[i,...], int(lb[i]), num_channels))
+            futures.append(executor.submit(dowork, Xbar[i,:num_channels,:nvp0,:nvp1], int(lb[i]), num_channels))
 
         for f in tqdm(futures):
             _den_err, _u_para_err, _T_perp_err, _T_para_err = f.result()
@@ -163,7 +164,7 @@ def physics_loss(data, lb, data_recon):
     nvp0 = xgcexp.f0mesh.f0_nmu+1
     nvp1 = xgcexp.f0mesh.f0_nvp*2+1
 
-    Xbar = data_recon.cpu().data.numpy()
+    Xbar = data_recon.cpu().data.numpy() ## shape: (nbatch, nchannel, nvp0, nvp1)
     
     den_err = 0.
     u_para_err = 0.
@@ -182,7 +183,7 @@ def physics_loss(data, lb, data_recon):
         den0, u_para0, T_perp0, T_para0, _, _ = \
             xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
 
-        f0_f = Xbar[i,...]
+        f0_f = Xbar[i,:num_channels,:nvp0,:nvp1]
         f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
         f0_f += mn[:,np.newaxis,np.newaxis]
         den1, u_para1, T_perp1, T_para1, _, _ = \
@@ -608,7 +609,7 @@ def main():
     parser.add_argument('--nompi', help='nompi', action='store_true')
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int, default=4)
-    parser.add_argument('--ncorespernode', type=int, help='Number of cores per node', default=64)
+    parser.add_argument('--ncorespernode', type=int, help='Number of cores per node', default=168)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -784,6 +785,7 @@ def main():
         loss = recon_error + vq_loss
         den_err, u_para_err, T_perp_err, T_para_err = None, None, None, None
         ds = None
+        #den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
         den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
         ds = np.mean(data_recon.cpu().data.numpy()**2)
         print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
