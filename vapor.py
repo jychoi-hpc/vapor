@@ -619,6 +619,7 @@ def main():
     parser.add_argument('--nompi', help='nompi', action='store_true')
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
+    parser.add_argument('--physicsloss', help='physicsloss', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -797,18 +798,17 @@ def main():
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2) 
         loss = recon_error + vq_loss
-        den_err, u_para_err, T_perp_err, T_para_err = None, None, None, None
-        ds = None
-        #den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
-        den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
-        ds = np.mean(data_recon.cpu().data.numpy()**2)
-        print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+        if args.physicsloss:
+            #den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
+            den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
+            ds = np.mean(data_recon.cpu().data.numpy()**2)
+            # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
 
-        # Here is to add physics information:
-        # loss += den_err/ds * torch.sum(data_recon)
-        # loss += u_para_err/ds * torch.mean(data_recon**2)
-        # loss += T_perp_err/ds * torch.sum(data_recon)
-        # loss += T_para_err/ds * torch.sum(data_recon)
+            # Here is to add physics information:
+            loss += den_err/ds * torch.sum(data_recon)
+            # loss += u_para_err/ds * torch.mean(data_recon**2)
+            # loss += T_perp_err/ds * torch.sum(data_recon)
+            # loss += T_para_err/ds * torch.sum(data_recon)
 
         loss.backward()
         if i % args.average_interval == 0:
