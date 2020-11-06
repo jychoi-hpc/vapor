@@ -809,6 +809,7 @@ def main():
     model.train()
     train_res_recon_error = []
     train_res_perplexity = []
+    train_res_physics_error = []
     istart = 1
 
     # %%
@@ -838,21 +839,17 @@ def main():
         
         vq_loss, data_recon, perplexity = model(data)
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
-        recon_error = torch.mean((data_recon - data)**2) 
-        loss = recon_error + vq_loss
+        recon_error = torch.mean((data_recon - data)**2)
+        physics_error = 0.0
         if args.physicsloss:
-            #den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
             den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
             ds = np.mean(data_recon.cpu().data.numpy()**2)
             # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
-
-            # Here is to add physics information:
-            loss += den_err/ds * torch.sum(data_recon)
-            # loss += u_para_err/ds * torch.mean(data_recon**2)
-            # loss += T_perp_err/ds * torch.sum(data_recon)
-            # loss += T_para_err/ds * torch.sum(data_recon)
-
+            # physics_error += den_err/ds * torch.mean(data_recon)
+            physics_error += den_err
+        loss = recon_error + vq_loss + physics_error
         loss.backward()
+
         if i % args.average_interval == 0:
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i))
@@ -862,6 +859,7 @@ def main():
         
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
+        train_res_physics_error.append(physics_error)
 
         if i % args.log_interval == 0:
             # logging.info('%d iterations' % (i))
@@ -869,8 +867,8 @@ def main():
             # logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
             # logging.info('time: %.3f' % (time.time()-t0))
             # logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
-            logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:])} {np.mean(train_res_perplexity[-args.log_interval:])}')
-            logging.info(f'{i} Loss: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:])} {np.mean(train_res_perplexity[-args.log_interval:])} {np.mean(train_res_physics_error[-args.log_interval:])}')
+            logging.info(f'{i} Loss: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {physics_error} {len(training_loader.dataset)} {len(data)}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
