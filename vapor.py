@@ -207,7 +207,7 @@ def physics_loss(data, lb, data_recon):
     return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
 
 # %%
-def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
+def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16):
     def adios2_get_shape(f, varname):
         nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
         shape = f.available_variables()[varname]['Shape']
@@ -221,19 +221,52 @@ def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
             lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
         return (nstep, lshape)
 
-    fname = '%s/restart_dir/xgc.f0.%05d.bp'%(dir,istep)
-    with ad2.open(fname, 'r') as f:
-        nstep, nsize = adios2_get_shape(f, 'i_f')
-        ndim = len(nsize)
-        nphi = nsize[0]
-        nnodes = nsize[2] if nnodes is None else nnodes
-        nmu = nsize[1]
-        nvp = nsize[3]
-        start = (0,0,inode,0)
-        count = (nphi,nmu,nnodes,nvp)
-        print ("Reading: ", start, count)
-        i_f = f.read('i_f', start=start, count=count).astype('float64')
-        #e_f = f.read('e_f')
+    fname = os.path.join(expdir, 'restart_dir/xgc.f0.%05d.bp'%istep)
+    if randomread > 0.0:
+        ## prefetch to get metadata
+        with ad2.open(fname, 'r') as f:
+            nstep, nsize = adios2_get_shape(f, 'i_f')
+            ndim = len(nsize)
+            nphi = nsize[0]
+            nnodes = nsize[2] if nnodes is None else nnodes
+            nmu = nsize[1]
+            nvp = nsize[3]
+        assert nnodes%nchunk == 0
+        _lnodes = list(range(inode, inode+nnodes, nchunk))
+        lnodes = random.sample(_lnodes, k=int(len(_lnodes)*randomread))
+
+        lf = list()
+        li = list()
+        for i in tqdm(lnodes):
+            if random.uniform(0, 1) < randomread:
+                li.append(np.array(range(i,i+nchunk), dtype=np.int32))
+                with ad2.open(fname, 'r') as f:
+                    iphi = 0 if iphi is None else iphi
+                    nphi = nsize[0] if iphi is None else 1
+                    start = (iphi,0,i,0)
+                    count = (nphi,nmu,nchunk,nvp)
+                    _f = f.read('i_f', start=start, count=count).astype('float64')
+                    lf.append(_f)
+            else:
+                pass
+        i_f = np.concatenate(lf, axis=2)
+        lb = np.concatenate(li)
+    else:
+        with ad2.open(fname, 'r') as f:
+            nstep, nsize = adios2_get_shape(f, 'i_f')
+            ndim = len(nsize)
+            iphi = 0 if iphi is None else iphi
+            nphi = nsize[0] if iphi is None else 1
+            nnodes = nsize[2] if nnodes is None else nnodes
+            nmu = nsize[1]
+            nvp = nsize[3]
+            start = (iphi,0,inode,0)
+            count = (nphi,nmu,nnodes,nvp)
+            print ("Reading: ", start, count)
+            i_f = f.read('i_f', start=start, count=count).astype('float64')
+            #e_f = f.read('e_f')
+        li = list(range(inode, inode+nnodes))
+        lb = np.array(li, dtype=np.int32)
 
     if i_f.shape[3] == 31:
         i_f = np.append(i_f, i_f[...,30:31], axis=3)
@@ -242,23 +275,26 @@ def read_f0(istep, dir='data', full=False, iphi=None, inode=0, nnodes=None):
         i_f = np.append(i_f, i_f[...,38:39], axis=3)
         i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
 
-    if full:
-        Zif = np.moveaxis(i_f, 1, 2).reshape((-1,i_f.shape[1],i_f.shape[3]))
+    Zif = np.moveaxis(i_f, 1, 2)
+
+    if average:
+        Zif = np.mean(Zif, axis=0)
+        zlb = lb
     else:
-        if iphi is not None:
-            Zif = np.moveaxis(i_f, 1, 2)
-            Zif = Zif[iphi,:]
-        else:
-            Zif = np.einsum('ijkl->kjl', i_f)/i_f.shape[0]
-            # Zef = np.einsum('ijkl->kjl', e_f)/sml_nphi
+        Zif = Zif.reshape((-1,Zif.shape[2],Zif.shape[3]))
+        _lb = list()
+        for i in range(nphi):
+            _lb.append( i*nnodes + lb)
+        zlb = np.concatenate(_lb)
     
+    #zlb = np.concatenate(li)
     zmu = np.mean(Zif, axis=(1,2))
     zsig = np.std(Zif, axis=(1,2))
     zmin = np.min(Zif, axis=(1,2))
     zmax = np.max(Zif, axis=(1,2))
     #Zif.shape, zmu.shape, zsig.shape
 
-    return (Zif, zmu, zsig, zmin, zmax)
+    return (Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
 """ Gradient averaging. """
@@ -620,6 +656,8 @@ def main():
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
     parser.add_argument('--physicsloss', help='physicsloss', action='store_true')
+    parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
+    parser.add_argument('--iphi', help='iphi', type=int)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -682,6 +720,7 @@ def main():
         # num_embeddings = 512
 
     batch_size = args.batch_size
+    assert args.batch_size % num_channels == 0
 
     num_hiddens = args.num_hiddens
     num_residual_hiddens = 32
@@ -701,22 +740,25 @@ def main():
     xgcexp = xgc4py.XGC(args.datadir)
     nnodes = xgcexp.mesh.nnodes
     
-    f0_filenames = args.timesteps
-    f0_filenames = np.array_split(np.array(f0_filenames), size)[rank]
+    timesteps = args.timesteps
+    timesteps = np.array_split(np.array(timesteps), size)[rank]
     f0_data_list = list()
     logging.info (f'Data dir: {args.datadir}')
-    for fname in f0_filenames:
-        logging.info (f'Reading: {fname}')
-        f0_data_list.append(read_f0(fname, dir=args.datadir, full=True, inode=0, nnodes=nnodes-nnodes%batch_size))
+    for istep in timesteps:
+        logging.info (f'Reading: {istep}')
+        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=0, nnodes=nnodes-nnodes%batch_size, \
+            randomread=args.randomread, nchunk=num_channels))
 
     lst = list(zip(*f0_data_list))
-    global Z0, zmu, zsig, zmin, zmax
+
+    global Z0, zmu, zsig, zmin, zmax, zlb
     Z0 = np.r_[(lst[0])]
     Zif = Z0.copy()
     zmu = np.r_[(lst[1])]
     zsig = np.r_[(lst[2])]
     zmin = np.r_[(lst[3])]
     zmax = np.r_[(lst[4])]
+    zlb = np.r_[(lst[5])]
     ## z-score normalization
     #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
     ## min-max normalization
@@ -728,7 +770,7 @@ def main():
 
     lx = list()
     ly = list()
-    for i in range(0,len(Zif)-num_channels,num_channels):
+    for i in range(0,len(Zif),num_channels):
         X = Zif[i:i+num_channels,:,:]
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
@@ -736,7 +778,7 @@ def main():
         ## z-score normalization
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
-        ly.append(np.array([i,], dtype=int))
+        ly.append(zlb[i])
 
     data_variance = np.var(lx, dtype=np.float64)
     print ('data_variance', data_variance)
