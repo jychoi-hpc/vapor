@@ -238,17 +238,14 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         lf = list()
         li = list()
         for i in tqdm(lnodes):
-            if random.uniform(0, 1) < randomread:
-                li.append(np.array(range(i,i+nchunk), dtype=np.int32))
-                with ad2.open(fname, 'r') as f:
-                    iphi = 0 if iphi is None else iphi
-                    nphi = nsize[0] if iphi is None else 1
-                    start = (iphi,0,i,0)
-                    count = (nphi,nmu,nchunk,nvp)
-                    _f = f.read('i_f', start=start, count=count).astype('float64')
-                    lf.append(_f)
-            else:
-                pass
+            li.append(np.array(range(i,i+nchunk), dtype=np.int32))
+            with ad2.open(fname, 'r') as f:
+                iphi = 0 if iphi is None else iphi
+                nphi = nsize[0] if iphi is None else 1
+                start = (iphi,0,i,0)
+                count = (nphi,nmu,nchunk,nvp)
+                _f = f.read('i_f', start=start, count=count).astype('float64')
+                lf.append(_f)
         i_f = np.concatenate(lf, axis=2)
         lb = np.concatenate(li)
     else:
