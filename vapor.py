@@ -655,6 +655,7 @@ def main():
     parser.add_argument('--physicsloss', help='physicsloss', action='store_true')
     parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
     parser.add_argument('--iphi', help='iphi', type=int)
+    parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -738,7 +739,8 @@ def main():
     nnodes = xgcexp.mesh.nnodes
     
     timesteps = args.timesteps
-    timesteps = np.array_split(np.array(timesteps), size)[rank]
+    if args.splitfiles:
+        timesteps = np.array_split(np.array(timesteps), size)[rank]
     f0_data_list = list()
     logging.info (f'Data dir: {args.datadir}')
     for istep in timesteps:
