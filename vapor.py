@@ -653,6 +653,7 @@ def main():
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
     parser.add_argument('--physicsloss', help='physicsloss', action='store_true')
+    parser.add_argument('--physicsloss_interval', help='physicsloss_interval (default: %(default)s)', type=int, default=1)
     parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
     parser.add_argument('--iphi', help='iphi', type=int)
     parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
@@ -840,7 +841,7 @@ def main():
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2)
         physics_error = 0.0
-        if args.physicsloss:
+        if args.physicsloss and (i % args.physicsloss_interval == 0):
             den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
             ds = np.mean(data_recon.cpu().data.numpy()**2)
             # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
