@@ -272,26 +272,26 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         i_f = np.append(i_f, i_f[...,38:39], axis=3)
         i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
 
-    Zif = np.moveaxis(i_f, 1, 2)
+    Z0 = np.moveaxis(i_f, 1, 2)
 
     if average:
-        Zif = np.mean(Zif, axis=0)
+        Z0 = np.mean(Z0, axis=0)
         zlb = lb
     else:
-        Zif = Zif.reshape((-1,Zif.shape[2],Zif.shape[3]))
+        Z0 = Z0.reshape((-1,Z0.shape[2],Z0.shape[3]))
         _lb = list()
         for i in range(nphi):
             _lb.append( i*nnodes + lb)
         zlb = np.concatenate(_lb)
     
     #zlb = np.concatenate(li)
-    zmu = np.mean(Zif, axis=(1,2))
-    zsig = np.std(Zif, axis=(1,2))
-    zmin = np.min(Zif, axis=(1,2))
-    zmax = np.max(Zif, axis=(1,2))
-    #Zif.shape, zmu.shape, zsig.shape
+    zmu = np.mean(Z0, axis=(1,2))
+    zsig = np.std(Z0, axis=(1,2))
+    zmin = np.min(Z0, axis=(1,2))
+    zmax = np.max(Z0, axis=(1,2))
+    Zif = (Z0 - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
 
-    return (Zif, zmu, zsig, zmin, zmax, zlb)
+    return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
 """ Gradient averaging. """
@@ -753,17 +753,17 @@ def main():
 
     global Z0, zmu, zsig, zmin, zmax, zlb
     Z0 = np.r_[(lst[0])]
-    Zif = Z0.copy()
-    zmu = np.r_[(lst[1])]
-    zsig = np.r_[(lst[2])]
-    zmin = np.r_[(lst[3])]
-    zmax = np.r_[(lst[4])]
-    zlb = np.r_[(lst[5])]
+    Zif = np.r_[(lst[1])]
+    zmu = np.r_[(lst[2])]
+    zsig = np.r_[(lst[3])]
+    zmin = np.r_[(lst[4])]
+    zmax = np.r_[(lst[5])]
+    zlb = np.r_[(lst[6])]
     ## z-score normalization
     #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
     ## min-max normalization
     #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
-    Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+    #Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
 
     print ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     print ('Minimum training epoch:', Zif.shape[0]/batch_size)
