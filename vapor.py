@@ -240,8 +240,8 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         for i in tqdm(lnodes):
             li.append(np.array(range(i,i+nchunk), dtype=np.int32))
             with ad2.open(fname, 'r') as f:
-                iphi = 0 if iphi is None else iphi
                 nphi = nsize[0] if iphi is None else 1
+                iphi = 0 if iphi is None else iphi
                 start = (iphi,0,i,0)
                 count = (nphi,nmu,nchunk,nvp)
                 _f = f.read('i_f', start=start, count=count).astype('float64')
@@ -252,8 +252,8 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         with ad2.open(fname, 'r') as f:
             nstep, nsize = adios2_get_shape(f, 'i_f')
             ndim = len(nsize)
-            iphi = 0 if iphi is None else iphi
             nphi = nsize[0] if iphi is None else 1
+            iphi = 0 if iphi is None else iphi
             nnodes = nsize[2] if nnodes is None else nnodes
             nmu = nsize[1]
             nvp = nsize[3]
