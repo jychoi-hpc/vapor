@@ -234,6 +234,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         assert nnodes%nchunk == 0
         _lnodes = list(range(inode, inode+nnodes, nchunk))
         lnodes = random.sample(_lnodes, k=int(len(_lnodes)*randomread))
+        lnodes = np.sort(lnodes)
 
         lf = list()
         li = list()
