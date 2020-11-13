@@ -661,6 +661,8 @@ def main():
     parser.add_argument('--iphi', help='iphi', type=int)
     parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
     parser.add_argument('--overwrap', help='overwrap', type=int, default=2)
+    parser.add_argument('--inode', help='inode', type=int, default=0)
+    parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -678,9 +680,9 @@ def main():
     #logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
     logging.basicConfig(level=logging.DEBUG, format=fmt)
 
-    logging.info("Usage: {0}\n".format(" ".join([x for x in sys.argv]))) 
+    logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
     logging.debug("All settings used:") 
-    for k,v in sorted(vars(args).items()): 
+    for k,v in vars(args).items(): 
         logging.debug("\t{0}: {1}".format(k,v))
 
     logging.info ('EXP: %s' % args.exp)
@@ -747,7 +749,7 @@ def main():
 
     # %%
     xgcexp = xgc4py.XGC(args.datadir)
-    nnodes = xgcexp.mesh.nnodes
+    nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
     
     timesteps = args.timesteps
     if args.splitfiles:
@@ -756,7 +758,7 @@ def main():
     logging.info (f'Data dir: {args.datadir}')
     for istep in timesteps:
         logging.info (f'Reading: {istep}')
-        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=0, nnodes=nnodes-nnodes%batch_size, \
+        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes-nnodes%batch_size, \
             randomread=args.randomread, nchunk=num_channels))
 
     lst = list(zip(*f0_data_list))
