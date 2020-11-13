@@ -40,6 +40,8 @@ from torchvision.utils import make_grid
 import xgc4py
 from tqdm import tqdm
 
+import sys
+
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 xgcexp = None
@@ -658,6 +660,7 @@ def main():
     parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
     parser.add_argument('--iphi', help='iphi', type=int)
     parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
+    parser.add_argument('--overwrap', help='overwrap', type=int, default=2)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -674,6 +677,12 @@ def main():
     print (fmt)
     #logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
     logging.basicConfig(level=logging.DEBUG, format=fmt)
+
+    logging.info("Usage: {0}\n".format(" ".join([x for x in sys.argv]))) 
+    logging.debug("All settings used:") 
+    for k,v in sorted(vars(args).items()): 
+        logging.debug("\t{0}: {1}".format(k,v))
+
     logging.info ('EXP: %s' % args.exp)
     logging.info ('embedding_dim: %d' % args.embedding_dim)
     logging.info ('DIR: %s' % args.wdir)
@@ -771,7 +780,7 @@ def main():
 
     lx = list()
     ly = list()
-    for i in range(0,len(Zif),num_channels):
+    for i in range(0,len(Zif)-num_channels+1,num_channels//args.overwrap):
         X = Zif[i:i+num_channels,:,:]
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
