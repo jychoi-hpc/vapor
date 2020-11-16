@@ -505,7 +505,7 @@ class Encoder(nn.Module):
         # import pdb; pdb.set_trace()
         # (2020/11) Testing with resize
         x = inputs
-        if hasattr(self, '_rescale') and self._rescale is not None:
+        if self._rescale is not None:
             x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
             x = self._conv_0(x)
             x = F.relu(x)
