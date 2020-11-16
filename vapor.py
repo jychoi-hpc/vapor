@@ -504,7 +504,7 @@ class Encoder(nn.Module):
         # (2020/11) Testing with resize
         x = inputs
         if hasattr(self, '_rescale') and self._rescale is not None:
-            x = F.interpolate(inputs, size=x.shape[-1]*2)
+            x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
             x = self._conv_0(x)
             x = F.relu(x)
 
@@ -679,6 +679,7 @@ def main():
     parser.add_argument('--overwrap', help='overwrap', type=int, default=2)
     parser.add_argument('--inode', help='inode', type=int, default=0)
     parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
+    parser.add_argument('--rescale', help='rescale', type=int, default=None)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -831,7 +832,7 @@ def main():
     # Model
     model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                 num_embeddings, embedding_dim, 
-                commitment_cost, decay, rescale=2).to(device)
+                commitment_cost, decay, rescale=args.rescale).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
