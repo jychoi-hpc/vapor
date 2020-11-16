@@ -471,8 +471,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self._rescale=rescale
-        if self._rescale is not None:
-            print ("Rescale is on: %d"%self._rescale)
+        print ("Model rescale: %s"%self._rescale)
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
@@ -574,7 +573,7 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False):
         super(Model, self).__init__()
         
         self._encoder = Encoder(num_channels, num_hiddens,
@@ -596,7 +595,10 @@ class Model(nn.Module):
                                 num_residual_hiddens, num_channels)
 
         """
+        Learn diff
         """
+        self._learndiff = learndiff
+        print ("Model learndiff: %s"%self._learndiff)
         self._encoder2 = Encoder(num_channels, num_hiddens,
                                 num_residual_layers, 
                                 num_residual_hiddens, rescale=rescale)
@@ -621,15 +623,15 @@ class Model(nn.Module):
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
-        return loss, x_recon, perplexity
 
-        """
-        z2 = self._encoder2(x-x_recon)
-        z2 = self._pre_vq_conv2(z2)
-        loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
-        x_recon2 = self._decoder2(quantized2)
-        return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
-        """
+        if not self._learndiff:
+            return loss, x_recon, perplexity
+        else:
+            z2 = self._encoder2(x-x_recon)
+            z2 = self._pre_vq_conv2(z2)
+            loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
+            x_recon2 = self._decoder2(quantized2)
+            return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
 
 # %%
 def load_checkpoint(DIR, prefix, model):
@@ -711,6 +713,7 @@ def main():
     parser.add_argument('--inode', help='inode', type=int, default=0)
     parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
     parser.add_argument('--rescale', help='rescale', type=int, default=None)
+    parser.add_argument('--learndiff', help='learndiff', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -863,7 +866,7 @@ def main():
     # Model
     model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                 num_embeddings, embedding_dim, 
-                commitment_cost, decay, rescale=args.rescale).to(device)
+                commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
