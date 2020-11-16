@@ -476,15 +476,16 @@ class Encoder(nn.Module):
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
-                                 kernel_size=4,
+                                 kernel_size=3,
                                  stride=2, padding=1)
+        # (2020/11) Changed from kernel_size=4, stride=2, padding=1
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=num_hiddens//2,
-                                 kernel_size=4,
+                                 kernel_size=3,
                                  stride=2, padding=1)
         self._conv_2 = nn.Conv2d(in_channels=num_hiddens//2,
                                  out_channels=num_hiddens,
-                                 kernel_size=4,
+                                 kernel_size=3,
                                  stride=2, padding=1)
         self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
@@ -537,20 +538,21 @@ class Decoder(nn.Module):
                                              num_residual_layers=num_residual_layers,
                                              num_residual_hiddens=num_residual_hiddens)
         
+        # (2020/11) Changed from kernel_size=4, stride=2, padding=1, output_padding=0
         self._conv_trans_1 = nn.ConvTranspose2d(in_channels=num_hiddens, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=4, 
-                                                stride=2, padding=1)
+                                                kernel_size=3, 
+                                                stride=2, padding=1, output_padding=1)
         
         self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=4, 
-                                                stride=2, padding=1)
+                                                kernel_size=3, 
+                                                stride=2, padding=1, output_padding=1)
         
         self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_channels,
-                                                kernel_size=4, 
-                                                stride=2, padding=1)
+                                                kernel_size=3, 
+                                                stride=2, padding=1, output_padding=1)
 
     def forward(self, inputs):
         #import pdb; pdb.set_trace()
