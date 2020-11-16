@@ -470,6 +470,10 @@ class Encoder(nn.Module):
     def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
         super(Encoder, self).__init__()
 
+        self._conv_0 = nn.Conv2d(in_channels=in_channels,
+                                 out_channels=in_channels,
+                                 kernel_size=4,
+                                 stride=2, padding=1)
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=num_hiddens//2,
                                  kernel_size=4,
@@ -492,7 +496,13 @@ class Encoder(nn.Module):
                                              num_residual_hiddens=num_residual_hiddens)
 
     def forward(self, inputs):
-        x = self._conv_1(inputs)
+        # import pdb; pdb.set_trace()
+        # (2020/11) Testing with resize
+        x = inputs
+        x = F.interpolate(inputs, size=64)
+        x = self._conv_0(x)
+
+        x = self._conv_1(x)
         x = F.relu(x)
         
         x = self._conv_2(x)
@@ -682,7 +692,7 @@ def main():
 
     logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
     logging.debug("All settings used:") 
-    for k,v in vars(args).items(): 
+    for k,v in sorted(vars(args).items()): 
         logging.debug("\t{0}: {1}".format(k,v))
 
     logging.info ('EXP: %s' % args.exp)
@@ -787,6 +797,7 @@ def main():
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
         N = X.astype(np.float32)
+        #N = rescale(N, 2.0, anti_aliasing=False, multichannel=True)
         ## z-score normalization
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
@@ -892,10 +903,17 @@ def main():
     (valid_originals, valid_labels) = next(iter(validation_loader))
     valid_originals = valid_originals.to(device)
 
-    x = model._encoder(valid_originals)
-    logging.info ('Original: %s' % (valid_originals.shape,))
-    logging.info ('Encoding: %s' % (x.shape,))
-    logging.info ('compression ratio: %.3f'%(x.detach().cpu().numpy().size/valid_originals.cpu().numpy().size))
+    vq_encoded = model._encoder(valid_originals)
+    vq_output_eval = model._pre_vq_conv(vq_encoded)
+    _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+    valid_reconstructions = model._decoder(valid_quantize)
+
+    logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
+    logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
+    logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
+    logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
+    logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
+    logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
 if __name__ == "__main__":
 
