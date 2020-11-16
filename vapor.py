@@ -595,14 +595,39 @@ class Model(nn.Module):
                                 num_residual_layers, 
                                 num_residual_hiddens, num_channels)
 
+        """
+        """
+        self._encoder2 = Encoder(num_channels, num_hiddens,
+                                num_residual_layers, 
+                                num_residual_hiddens, rescale=rescale)
+        self._pre_vq_conv2 = nn.Conv2d(in_channels=num_hiddens, 
+                                      out_channels=embedding_dim,
+                                      kernel_size=1, 
+                                      stride=1)
+        if decay > 0.0:
+            self._vq_vae2 = VectorQuantizerEMA(num_embeddings, embedding_dim, 
+                                              commitment_cost, decay)
+        else:
+            self._vq_vae2 = VectorQuantizer(num_embeddings, embedding_dim,
+                                           commitment_cost)
+        self._decoder2 = Decoder(embedding_dim,
+                                num_hiddens, 
+                                num_residual_layers, 
+                                num_residual_hiddens, num_channels)
+
     def forward(self, x):
         #import pdb; pdb.set_trace()
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
+        # return loss, x_recon, perplexity
 
-        return loss, x_recon, perplexity
+        z2 = self._encoder2(torch.abs(x-x_recon))
+        z2 = self._pre_vq_conv2(z2)
+        loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
+        x_recon2 = self._decoder2(quantized2)
+        return loss2, x_recon2, perplexity2
 
 # %%
 def load_checkpoint(DIR, prefix, model):
@@ -901,8 +926,8 @@ def main():
             # logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
             # logging.info('time: %.3f' % (time.time()-t0))
             # logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
-            logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:])} {np.mean(train_res_perplexity[-args.log_interval:])} {np.mean(train_res_physics_error[-args.log_interval:])}')
-            logging.info(f'{i} Loss: {recon_error.item()} {vq_loss.data.item()} {perplexity.item()} {physics_error} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
+            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {len(training_loader.dataset)} {len(data)}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
