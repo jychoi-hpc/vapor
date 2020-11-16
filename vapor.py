@@ -467,8 +467,12 @@ class ResidualStack(nn.Module):
 
 # %%
 class Encoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, rescale=None):
         super(Encoder, self).__init__()
+
+        self._rescale=rescale
+        if self._rescale is not None:
+            print ("Rescale is on: %d"%self._rescale)
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
@@ -499,8 +503,10 @@ class Encoder(nn.Module):
         # import pdb; pdb.set_trace()
         # (2020/11) Testing with resize
         x = inputs
-        x = F.interpolate(inputs, size=64)
-        x = self._conv_0(x)
+        if hasattr(self, '_rescale') and self._rescale is not None:
+            x = F.interpolate(inputs, size=x.shape[-1]*2)
+            x = self._conv_0(x)
+            x = F.relu(x)
 
         x = self._conv_1(x)
         x = F.relu(x)
@@ -564,12 +570,12 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None):
         super(Model, self).__init__()
         
         self._encoder = Encoder(num_channels, num_hiddens,
                                 num_residual_layers, 
-                                num_residual_hiddens)
+                                num_residual_hiddens, rescale=rescale)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens, 
                                       out_channels=embedding_dim,
                                       kernel_size=1, 
@@ -825,7 +831,7 @@ def main():
     # Model
     model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                 num_embeddings, embedding_dim, 
-                commitment_cost, decay).to(device)
+                commitment_cost, decay, rescale=2).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
