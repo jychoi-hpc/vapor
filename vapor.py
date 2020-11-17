@@ -483,13 +483,16 @@ class Encoder(nn.Module):
         # kernel_size=2, stride=2, padding=0
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=num_hiddens//2,
-                                 kernel_size=4, stride=2, padding=1)
+                                 kernel_size=3, stride=2, padding=1)
         self._conv_2 = nn.Conv2d(in_channels=num_hiddens//2,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1)
+                                 kernel_size=3, stride=2, padding=1)
         self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
                                  kernel_size=3, stride=2, padding=1)
+
+        # kernel_size=3, stride=1, padding=1
+        # kernel_size=2, stride=2, padding=0
         self._conv_4 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
                                  kernel_size=3, stride=1, padding=1)
@@ -542,13 +545,13 @@ class Decoder(nn.Module):
         # kernel_size=2, stride=2, padding=0, output_padding=0
         self._conv_trans_1 = nn.ConvTranspose2d(in_channels=num_hiddens, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=4, stride=2, padding=1, output_padding=0)
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
         self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=4, stride=2, padding=1, output_padding=0)
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
         self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_channels,
-                                                kernel_size=4, stride=2, padding=1, output_padding=0)
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, inputs):
         # import pdb; pdb.set_trace()
@@ -977,11 +980,7 @@ def main():
         train_res_physics_error.append(physics_error)
 
         if i % args.log_interval == 0:
-            # logging.info('%d iterations' % (i))
-            # logging.info('recon_error: %.3g' % np.mean(train_res_recon_error[-1000:]))
-            # logging.info('perplexity: %.3g' % np.mean(train_res_perplexity[-1000:]))
-            # logging.info('time: %.3f' % (time.time()-t0))
-            # logging.info('last recon_error, vq_loss: %.3g %.3g'%(recon_error.data.item(), vq_loss.data.item()))
+            logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
             logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {len(training_loader.dataset)} {len(data)}')
             # logging.info('')
