@@ -475,7 +475,7 @@ class Encoder(nn.Module):
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
-                                 kernel_size=2,
+                                 kernel_size=4,
                                  stride=2, padding=0)
         # (2020/11) possible kernel size
         # kernel_size=4, stride=2, padding=1
@@ -489,10 +489,10 @@ class Encoder(nn.Module):
                                  kernel_size=4, stride=2, padding=1)
         self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1)
+                                 kernel_size=3, stride=2, padding=1)
         self._conv_4 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1)
+                                 kernel_size=3, stride=1, padding=1)
         self._residual_stack = ResidualStack(in_channels=num_hiddens,
                                              num_hiddens=num_hiddens,
                                              num_residual_layers=num_residual_layers,
@@ -552,7 +552,8 @@ class Decoder(nn.Module):
 
     def forward(self, inputs):
         # import pdb; pdb.set_trace()
-        x = self._conv_1(inputs)
+        x = inputs
+        x = self._conv_1(x)
         
         x = self._residual_stack(x)
         
