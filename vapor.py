@@ -463,7 +463,7 @@ class ResidualStack(nn.Module):
     def forward(self, x):
         for i in range(self._num_residual_layers):
             x = self._layers[i](x)
-        return F.tanh(x)
+        return F.relu(x)
 
 # %%
 class Encoder(nn.Module):
@@ -507,16 +507,16 @@ class Encoder(nn.Module):
         if self._rescale is not None:
             x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
             x = self._conv_0(x)
-            x = F.tanh(x)
+            x = F.relu(x)
 
         x = self._conv_1(x)
-        x = F.tanh(x)
+        x = F.relu(x)
         
         x = self._conv_2(x)
-        x = F.tanh(x)
+        x = F.relu(x)
         
         x = self._conv_3(x)
-        x = F.tanh(x)
+        x = F.relu(x)
 
         x = self._conv_4(x)
         
@@ -562,10 +562,10 @@ class Decoder(nn.Module):
         x = self._residual_stack(x)
         
         x = self._conv_trans_1(x)
-        x = F.tanh(x)
+        x = F.relu(x)
         
         x = self._conv_trans_2(x)
-        x = F.tanh(x)
+        x = F.relu(x)
 
         x = self._conv_trans_3(x)
         return x
