@@ -483,16 +483,16 @@ class Encoder(nn.Module):
         # kernel_size=2, stride=2, padding=0
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=num_hiddens//2,
-                                 kernel_size=4, stride=2, padding=1, output_padding=0)
+                                 kernel_size=4, stride=2, padding=1)
         self._conv_2 = nn.Conv2d(in_channels=num_hiddens//2,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1, output_padding=0)
+                                 kernel_size=4, stride=2, padding=1)
         self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1, output_padding=0)
+                                 kernel_size=4, stride=2, padding=1)
         self._conv_4 = nn.Conv2d(in_channels=num_hiddens,
                                  out_channels=num_hiddens,
-                                 kernel_size=4, stride=2, padding=1, output_padding=0)
+                                 kernel_size=4, stride=2, padding=1)
         self._residual_stack = ResidualStack(in_channels=num_hiddens,
                                              num_hiddens=num_hiddens,
                                              num_residual_layers=num_residual_layers,
