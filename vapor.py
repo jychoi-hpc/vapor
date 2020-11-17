@@ -571,6 +571,60 @@ class Decoder(nn.Module):
         return x
 
 # %%
+"""
+Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
+"""
+class AE(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.encoder_hidden_layer = nn.Linear(
+            in_features=kwargs["input_shape"], out_features=128
+        )
+        self.encoder_output_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_hidden_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_output_layer = nn.Linear(
+            in_features=128, out_features=kwargs["input_shape"]
+        )
+
+    def forward(self, features):
+        activation = self.encoder_hidden_layer(features)
+        activation = torch.relu(activation)
+        code = self.encoder_output_layer(activation)
+        code = torch.relu(code)
+        activation = self.decoder_hidden_layer(code)
+        activation = torch.relu(activation)
+        activation = self.decoder_output_layer(activation)
+        reconstructed = torch.relu(activation)
+        return reconstructed
+
+# %%
+"""
+Credit: https://medium.com/@vaibhaw.vipul/building-autoencoder-in-pytorch-34052d1d280c
+"""
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder,self).__init__()
+        
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 6, kernel_size=5),
+            nn.ReLU(True),
+            nn.Conv2d(6,16,kernel_size=5),
+            nn.ReLU(True))
+        self.decoder = nn.Sequential(             
+            nn.ConvTranspose2d(16,6,kernel_size=5),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(6,3,kernel_size=5),
+            nn.ReLU(True))
+    def forward(self,x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+# %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False):
@@ -714,6 +768,7 @@ def main():
     parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
     parser.add_argument('--rescale', help='rescale', type=int, default=None)
     parser.add_argument('--learndiff', help='learndiff', action='store_true')
+    parser.add_argument('--nchannels', help='nchannels', type=int, default=16)
     args = parser.parse_args()
 
     if not args.nompi:
@@ -752,7 +807,7 @@ def main():
             torch.cuda.manual_seed(args.seed)
 
     # %%
-    num_channels = 16
+    num_channels = args.nchannels
 
     ## This is the original setting
         # batch_size = 256
