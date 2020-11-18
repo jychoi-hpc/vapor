@@ -693,9 +693,9 @@ class Model(nn.Module):
             # x_recon2 = self._decoder2(quantized2)
             # return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
 
-            dx = (x-x_recon).detach().view(-1, self._diff_model_input_shape)
-            outputs = self._dmodel(dx)
-            dloss = self._dcriterion(outputs, dx)
+            dx = (x-x_recon).detach()
+            outputs = self._dmodel(dx.view(-1, self._diff_model_input_shape))
+            dloss = self._dcriterion(outputs, dx.view(-1, self._diff_model_input_shape))
             return loss, x_recon, perplexity, dloss
 
 
@@ -1001,7 +1001,7 @@ def main():
             dloss.backward()
             model._doptimizer.step()
             if i % args.log_interval == 0:
-                logging.info(f'{i} doss: {dloss.item():g}')
+                logging.info(f'{i} dloss: {dloss.item():g}')
 
 
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
