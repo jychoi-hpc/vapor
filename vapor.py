@@ -685,10 +685,10 @@ class Model(nn.Module):
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
+        drecon = 0
+        dloss = 0
 
-        if not self._learndiff:
-            return loss, x_recon, perplexity
-        else:
+        if self._learndiff:
             # z2 = self._encoder2(x-x_recon)
             # z2 = self._pre_vq_conv2(z2)
             # loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
@@ -700,7 +700,9 @@ class Model(nn.Module):
             outputs = self._dmodel(dx)
             dloss = self._dcriterion(outputs, dx)
             drecon = outputs.view(-1, nchannel, dim1, dim2)
-            return loss+dloss, x_recon+drecon, perplexity
+            print ("dloss:", dloss.item())
+
+        return loss, x_recon+drecon, perplexity, dloss
 
 
 # %%
@@ -978,7 +980,7 @@ def main():
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
         
-        vq_loss, data_recon, perplexity = model(data)
+        vq_loss, data_recon, perplexity, dloss = model(data)
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2)
         physics_error = 0.0
@@ -988,7 +990,7 @@ def main():
             # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
             # physics_error += den_err/ds * torch.mean(data_recon)
             physics_error += den_err
-        loss = recon_error + vq_loss + physics_error
+        loss = recon_error + vq_loss + physics_error + dloss
         loss.backward()
 
         if i % args.average_interval == 0:
@@ -1006,7 +1008,7 @@ def main():
         if i % args.log_interval == 0:
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
-            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
