@@ -626,7 +626,7 @@ class Autoencoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, diff_model_input_shape=None):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None):
         super(Model, self).__init__()
         
         self._encoder = Encoder(num_channels, num_hiddens,
@@ -653,6 +653,7 @@ class Model(nn.Module):
         self._learndiff = learndiff
         print ("Model learndiff: %s"%self._learndiff)
         if self._learndiff:
+            """
             self._encoder2 = Encoder(num_channels, num_hiddens,
                                     num_residual_layers, 
                                     num_residual_hiddens, rescale=rescale)
@@ -670,12 +671,13 @@ class Model(nn.Module):
                                     num_hiddens, 
                                     num_residual_layers, 
                                     num_residual_hiddens, num_channels)
+            """
 
-
-            self._diff_model_input_shape = diff_model_input_shape
-            self._dmodel = AE(input_shape=diff_model_input_shape)
-            self._doptimizer = optim.Adam(self._dmodel.parameters(), lr=1e-3)
-            self._dcriterion = nn.MSELoss()        
+            self._input_shape = input_shape
+            nbatch, nchannel, dim1, dim2 = self._input_shape
+            self._dmodel = AE(input_shape=nchannel*dim1*dim2)
+            #self._doptimizer = optim.Adam(self._dmodel.parameters(), lr=1e-3)
+            self._dcriterion = nn.MSELoss()
         
     def forward(self, x):
         #import pdb; pdb.set_trace()
@@ -693,10 +695,12 @@ class Model(nn.Module):
             # x_recon2 = self._decoder2(quantized2)
             # return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
 
-            dx = (x-x_recon).detach()
-            outputs = self._dmodel(dx.view(-1, self._diff_model_input_shape))
-            dloss = self._dcriterion(outputs, dx.view(-1, self._diff_model_input_shape))
-            return loss, x_recon, perplexity, dloss
+            nbatch, nchannel, dim1, dim2 = x.shape
+            dx = (x-x_recon).view(-1, nchannel*dim1*dim2)
+            outputs = self._dmodel(dx)
+            dloss = self._dcriterion(outputs, dx)
+            drecon = outputs.view(-1, nchannel, dim1, dim2)
+            return loss+dloss, x_recon+drecon, perplexity
 
 
 # %%
@@ -935,7 +939,7 @@ def main():
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    diff_model_input_shape=num_channels*Z0.shape[-2]*Z0.shape[-1]).to(device)
+                    input_shape=[batch_size, num_channels, Zif.shape[-2], Zif.shape[-1]]).to(device)
     else:
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
@@ -973,13 +977,8 @@ def main():
         (data, lb) = next(iter(training_loader))
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
-        if args.learndiff:
-            model._doptimizer.zero_grad()
         
-        if args.learndiff:
-            vq_loss, data_recon, perplexity, dloss = model(data)
-        else:
-            vq_loss, data_recon, perplexity = model(data)
+        vq_loss, data_recon, perplexity = model(data)
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2)
         physics_error = 0.0
@@ -997,12 +996,6 @@ def main():
             logging.info('iteration %d: gradient averaging' % (i))
             average_gradients(model)
         optimizer.step()
-        if args.learndiff:
-            dloss.backward()
-            model._doptimizer.step()
-            if i % args.log_interval == 0:
-                logging.info(f'{i} dloss: {dloss.item():g}')
-
 
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
