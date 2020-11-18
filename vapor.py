@@ -700,7 +700,6 @@ class Model(nn.Module):
             outputs = self._dmodel(dx)
             dloss = self._dcriterion(outputs, dx)
             drecon = outputs.view(-1, nchannel, dim1, dim2)
-            print ("dloss:", dloss.item())
 
         return loss, x_recon+drecon, perplexity, dloss
 
@@ -716,6 +715,7 @@ def load_checkpoint(DIR, prefix, model):
     _prefix = '%s/%s'%(DIR, prefix)
     _istart = None
     _model = None
+    _dmodel = None
     _err = None
     try:
         with open('%s/checkpoint.txt'%(_prefix), 'r') as f:
@@ -728,11 +728,18 @@ def load_checkpoint(DIR, prefix, model):
         print ("Error:", sys.exc_info()[0])
         print ("No restart info")
         pass
-    
-    return (_istart, _model)
+
+    try:
+        fname = '%s/checkpoint-dmodel.%d.pytorch'%(_prefix, _istart)
+        print ('Checkpoint:', fname)
+        _dmodel = torch.load(fname)
+    except:
+        pass
+
+    return (_istart, _model, _dmodel)
 
 # %%
-def save_checkpoint(DIR, prefix, model, err, epoch):
+def save_checkpoint(DIR, prefix, model, err, epoch, dmodel=None):
     import hashlib
     from pathlib import Path
 
@@ -746,6 +753,9 @@ def save_checkpoint(DIR, prefix, model, err, epoch):
     np.savez(fname, err=err)
     fname = '%s/checkpoint.%d.pytorch'%(_prefix, epoch)
     torch.save(model, fname)
+    if dmodel is not None:
+        fname = '%s/checkpoint-dmodel.%d.pytorch'%(_prefix, epoch)
+        torch.save(dmodel, fname)
     with open('%s/checkpoint.txt'%(_prefix), 'w+') as f:
         f.write(str(epoch))
     print ("Saved checkpoint: %s"%(fname))
@@ -785,8 +795,9 @@ def main():
     parser.add_argument('--inode', help='inode', type=int, default=0)
     parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
     parser.add_argument('--rescale', help='rescale', type=int, default=None)
-    parser.add_argument('--learndiff', help='learndiff', action='store_true')
     parser.add_argument('--nchannels', help='nchannels', type=int, default=16)
+    parser.add_argument('--learndiff', help='learndiff', action='store_true')
+    parser.add_argument('--learndiff2', help='learndiff2', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -949,6 +960,13 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
+    dmodel = None
+    if args.learndiff2:
+        dim1, dim2 = Zif.shape[-2], Zif.shape[-1]
+        dmodel = AE(input_shape=num_channels*dim1*dim2)
+        doptimizer = optim.Adam(dmodel.parameters(), lr=1e-3)
+        dcriterion = nn.MSELoss()
+
     model.train()
     train_res_recon_error = []
     train_res_perplexity = []
@@ -957,7 +975,7 @@ def main():
 
     # %%
     # Load checkpoint
-    _istart, _model = load_checkpoint(DIR, prefix, model)
+    _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
     if _model is not None:
         istart = _istart + 1
         model = _model
@@ -993,6 +1011,15 @@ def main():
         loss = recon_error + vq_loss + physics_error + dloss
         loss.backward()
 
+        if args.learndiff2:
+            doptimizer.zero_grad() # clear previous gradients
+            dim1, dim2 = Zif.shape[-2], Zif.shape[-1]
+            dx = (data-data_recon).view(-1,num_channels*dim1*dim2).detach()
+            drecon = dmodel(dx)
+            dloss = dcriterion(drecon, dx)
+            dloss.backward()
+            doptimizer.step()
+
         if i % args.average_interval == 0:
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i))
@@ -1009,10 +1036,12 @@ def main():
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
             logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
+            if args.learndiff2:
+                logging.info(f'{i} dloss: {dloss.item():g}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
-            save_checkpoint(DIR, prefix, model, train_res_recon_error, i)
+            save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
     istart=istart+num_training_updates
 
     # %%
