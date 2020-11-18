@@ -591,13 +591,13 @@ class AE(nn.Module):
 
     def forward(self, features):
         activation = self.encoder_hidden_layer(features)
-        activation = torch.relu(activation)
+        activation = torch.tanh(activation)
         code = self.encoder_output_layer(activation)
-        code = torch.relu(code)
+        code = torch.tanh(code)
         activation = self.decoder_hidden_layer(code)
-        activation = torch.relu(activation)
+        activation = torch.tanh(activation)
         activation = self.decoder_output_layer(activation)
-        reconstructed = torch.relu(activation)
+        reconstructed = torch.tanh(activation)
         return reconstructed
 
 # %%
@@ -626,7 +626,7 @@ class Autoencoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, diff_model_input_shape=None):
         super(Model, self).__init__()
         
         self._encoder = Encoder(num_channels, num_hiddens,
@@ -652,24 +652,31 @@ class Model(nn.Module):
         """
         self._learndiff = learndiff
         print ("Model learndiff: %s"%self._learndiff)
-        self._encoder2 = Encoder(num_channels, num_hiddens,
-                                num_residual_layers, 
-                                num_residual_hiddens, rescale=rescale)
-        self._pre_vq_conv2 = nn.Conv2d(in_channels=num_hiddens, 
-                                      out_channels=embedding_dim,
-                                      kernel_size=1, 
-                                      stride=1)
-        if decay > 0.0:
-            self._vq_vae2 = VectorQuantizerEMA(num_embeddings, embedding_dim, 
-                                              commitment_cost, decay)
-        else:
-            self._vq_vae2 = VectorQuantizer(num_embeddings, embedding_dim,
-                                           commitment_cost)
-        self._decoder2 = Decoder(embedding_dim,
-                                num_hiddens, 
-                                num_residual_layers, 
-                                num_residual_hiddens, num_channels)
+        if self._learndiff:
+            self._encoder2 = Encoder(num_channels, num_hiddens,
+                                    num_residual_layers, 
+                                    num_residual_hiddens, rescale=rescale)
+            self._pre_vq_conv2 = nn.Conv2d(in_channels=num_hiddens, 
+                                        out_channels=embedding_dim,
+                                        kernel_size=1, 
+                                        stride=1)
+            if decay > 0.0:
+                self._vq_vae2 = VectorQuantizerEMA(num_embeddings, embedding_dim, 
+                                                commitment_cost, decay)
+            else:
+                self._vq_vae2 = VectorQuantizer(num_embeddings, embedding_dim,
+                                            commitment_cost)
+            self._decoder2 = Decoder(embedding_dim,
+                                    num_hiddens, 
+                                    num_residual_layers, 
+                                    num_residual_hiddens, num_channels)
 
+
+            self._diff_model_input_shape = diff_model_input_shape
+            self._dmodel = AE(input_shape=diff_model_input_shape)
+            self._doptimizer = optim.Adam(self._dmodel.parameters(), lr=1e-3)
+            self._dcriterion = nn.MSELoss()        
+        
     def forward(self, x):
         #import pdb; pdb.set_trace()
         z = self._encoder(x)
@@ -680,11 +687,17 @@ class Model(nn.Module):
         if not self._learndiff:
             return loss, x_recon, perplexity
         else:
-            z2 = self._encoder2(x-x_recon)
-            z2 = self._pre_vq_conv2(z2)
-            loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
-            x_recon2 = self._decoder2(quantized2)
-            return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
+            # z2 = self._encoder2(x-x_recon)
+            # z2 = self._pre_vq_conv2(z2)
+            # loss2, quantized2, perplexity2, _ = self._vq_vae2(z2)
+            # x_recon2 = self._decoder2(quantized2)
+            # return loss+loss2, x_recon+x_recon2, perplexity+perplexity2
+
+            dx = (x-x_recon).detach().view(-1, self._diff_model_input_shape)
+            outputs = self._dmodel(dx)
+            dloss = self._dcriterion(outputs, dx)
+            return loss, x_recon, perplexity, dloss
+
 
 # %%
 def load_checkpoint(DIR, prefix, model):
@@ -918,9 +931,15 @@ def main():
 
     # %% 
     # Model
-    model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
-                num_embeddings, embedding_dim, 
-                commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
+    if args.learndiff:
+        model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+                    num_embeddings, embedding_dim, 
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
+                    diff_model_input_shape=num_channels*Z0.shape[-2]*Z0.shape[-1]).to(device)
+    else:
+        model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+                    num_embeddings, embedding_dim, 
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -954,8 +973,13 @@ def main():
         (data, lb) = next(iter(training_loader))
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
+        if args.learndiff:
+            model._doptimizer.zero_grad()
         
-        vq_loss, data_recon, perplexity = model(data)
+        if args.learndiff:
+            vq_loss, data_recon, perplexity, dloss = model(data)
+        else:
+            vq_loss, data_recon, perplexity = model(data)
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
         recon_error = torch.mean((data_recon - data)**2)
         physics_error = 0.0
@@ -973,6 +997,13 @@ def main():
             logging.info('iteration %d: gradient averaging' % (i))
             average_gradients(model)
         optimizer.step()
+        if args.learndiff:
+            dloss.backward()
+            model._doptimizer.step()
+            if i % args.log_interval == 0:
+                logging.info(f'{i} doss: {dloss.item():g}')
+
+
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
         train_res_recon_error.append(recon_error.item())
