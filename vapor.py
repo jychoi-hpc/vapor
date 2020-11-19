@@ -963,7 +963,7 @@ def main():
     dmodel = None
     if args.learndiff2:
         dim1, dim2 = Zif.shape[-2], Zif.shape[-1]
-        dmodel = AE(input_shape=num_channels*dim1*dim2)
+        dmodel = AE(input_shape=num_channels*dim1*dim2).to(device)
         doptimizer = optim.Adam(dmodel.parameters(), lr=1e-3)
         dcriterion = nn.MSELoss()
 
@@ -1020,7 +1020,7 @@ def main():
             dloss.backward()
             doptimizer.step()
 
-        if i % args.average_interval == 0:
+        if (size>0) and (i%args.average_interval==0):
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i))
             average_gradients(model)
