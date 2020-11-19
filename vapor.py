@@ -780,7 +780,7 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
-    parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int, default=1_000)
+    parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('--nompi', help='nompi', action='store_true')
@@ -1020,7 +1020,7 @@ def main():
             dloss.backward()
             doptimizer.step()
 
-        if (size>0) and (i%args.average_interval==0):
+        if (args.average_interval is not None) and (i%args.average_interval == 0):
             ## Gradient averaging
             logging.info('iteration %d: gradient averaging' % (i))
             average_gradients(model)
