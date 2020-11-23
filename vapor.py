@@ -333,7 +333,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         Z0 = Z0.reshape((-1,Z0.shape[2],Z0.shape[3]))
         _lb = list()
         for i in range(nphi):
-            _lb.append( i*nnodes + lb)
+            _lb.append( i*100_000_000 + lb)
         zlb = np.concatenate(_lb)
     
     #zlb = np.concatenate(li)
@@ -943,7 +943,7 @@ def main():
     logging.info (f'Data dir: {args.datadir}')
     for istep in timesteps:
         logging.info (f'Reading: {istep}')
-        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes-nnodes%batch_size, \
+        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes, \
             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
 
     lst = list(zip(*f0_data_list))
@@ -976,16 +976,19 @@ def main():
         ## z-score normalization
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
-        ly.append(zlb[i])
+        ly.append(zlb[i:i+num_channels])
 
     data_variance = np.var(lx, dtype=np.float64)
     print ('data_variance', data_variance)
 
     # %% 
     # Loadding
-    X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.10, random_state=42)
-    training_data = torch.utils.data.TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
-    validation_data = torch.utils.data.TensorDataset(torch.Tensor(X_test), torch.Tensor(y_test))    
+    # X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.10, random_state=42)
+    # training_data = torch.utils.data.TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
+    # validation_data = torch.utils.data.TensorDataset(torch.Tensor(X_test), torch.Tensor(y_test))    
+    # (2020/11) Temporary. Use all data for training
+    training_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))
+    validation_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))    
 
     training_loader = DataLoader(training_data, 
                                 batch_size=batch_size, 
