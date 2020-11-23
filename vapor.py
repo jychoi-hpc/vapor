@@ -209,7 +209,7 @@ def physics_loss(data, lb, data_recon):
     return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
 
 # %%
-def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16):
+def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16, fieldline=False):
     def adios2_get_shape(f, varname):
         nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
         shape = f.available_variables()[varname]['Shape']
@@ -251,6 +251,55 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
                 lf.append(_f)
         i_f = np.concatenate(lf, axis=2)
         lb = np.concatenate(li)
+    elif fieldline is True:
+        import networkx as nx
+
+        fname2 = os.path.join(expdir, 'xgc.mesh.bp')
+        with ad2.open(fname2, 'r') as f:
+            nnodes = int(f.read('n_n', ))
+            nextnode = f.read('nextnode')
+        
+        G = nx.Graph()
+        for i in range(nnodes):
+            G.add_node(i)
+        for i in range(nnodes):
+            G.add_edge(i, nextnode[i])
+            G.add_edge(nextnode[i], i)
+        cc = [x for x in list(nx.connected_components(G)) if len(x) >= nchunk]
+
+        li = list()
+        for k, components in enumerate(cc):
+            DG = nx.DiGraph()
+            for i in components:
+                DG.add_node(i)
+            for i in components:
+                DG.add_edge(i, nextnode[i])
+            
+            cycle = list(nx.find_cycle(DG))
+            DG.remove_edge(*cycle[-1])
+            
+            path = nx.dag_longest_path(DG)
+            #print (k, len(components), path[0])
+            for i in path[:len(path)-len(path)%nchunk]:
+                li.append(i)
+
+        with ad2.open(fname, 'r') as f:
+            nstep, nsize = adios2_get_shape(f, 'i_f')
+            ndim = len(nsize)
+            nphi = nsize[0] if iphi is None else 1
+            iphi = 0 if iphi is None else iphi
+            nnodes = nsize[2] if nnodes is None else nnodes
+            nmu = nsize[1]
+            nvp = nsize[3]
+            start = (iphi,0,inode,0)
+            count = (nphi,nmu,nnodes,nvp)
+            print ("Reading: ", start, count)
+            i_f = f.read('i_f', start=start, count=count).astype('float64')
+        
+        lb = np.array(li, dtype=np.int32)
+        print ("Fieldline: ", len(lb))
+        print (lb)
+        i_f = i_f[:,:,lb,:]
     else:
         with ad2.open(fname, 'r') as f:
             nstep, nsize = adios2_get_shape(f, 'i_f')
@@ -798,6 +847,7 @@ def main():
     parser.add_argument('--nchannels', help='nchannels', type=int, default=16)
     parser.add_argument('--learndiff', help='learndiff', action='store_true')
     parser.add_argument('--learndiff2', help='learndiff2', action='store_true')
+    parser.add_argument('--fieldline', help='fieldline', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -894,7 +944,7 @@ def main():
     for istep in timesteps:
         logging.info (f'Reading: {istep}')
         f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes-nnodes%batch_size, \
-            randomread=args.randomread, nchunk=num_channels))
+            randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
 
     lst = list(zip(*f0_data_list))
 
