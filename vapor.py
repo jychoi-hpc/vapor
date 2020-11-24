@@ -230,11 +230,11 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             nstep, nsize = adios2_get_shape(f, 'i_f')
             ndim = len(nsize)
             nphi = nsize[0]
-            nnodes = nsize[2] if nnodes is None else nnodes
+            _nnodes = nsize[2] if nnodes is None else nnodes
             nmu = nsize[1]
             nvp = nsize[3]
-        assert nnodes%nchunk == 0
-        _lnodes = list(range(inode, inode+nnodes, nchunk))
+        assert _nnodes%nchunk == 0
+        _lnodes = list(range(inode, inode+_nnodes, nchunk))
         lnodes = random.sample(_lnodes, k=int(len(_lnodes)*randomread))
         lnodes = np.sort(lnodes)
 
@@ -256,13 +256,13 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
 
         fname2 = os.path.join(expdir, 'xgc.mesh.bp')
         with ad2.open(fname2, 'r') as f:
-            nnodes = int(f.read('n_n', ))
+            _nnodes = int(f.read('n_n', ))
             nextnode = f.read('nextnode')
         
         G = nx.Graph()
-        for i in range(nnodes):
+        for i in range(_nnodes):
             G.add_node(i)
-        for i in range(nnodes):
+        for i in range(_nnodes):
             G.add_edge(i, nextnode[i])
             G.add_edge(nextnode[i], i)
         cc = [x for x in list(nx.connected_components(G)) if len(x) >= nchunk]
@@ -288,15 +288,16 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             ndim = len(nsize)
             nphi = nsize[0] if iphi is None else 1
             iphi = 0 if iphi is None else iphi
-            nnodes = nsize[2] if nnodes is None else nnodes
+            _nnodes = nsize[2]
             nmu = nsize[1]
             nvp = nsize[3]
-            start = (iphi,0,inode,0)
-            count = (nphi,nmu,nnodes,nvp)
+            start = (iphi,0,0,0)
+            count = (nphi,nmu,_nnodes,nvp)
             print ("Reading: ", start, count)
             i_f = f.read('i_f', start=start, count=count).astype('float64')
         
-        lb = np.array(li, dtype=np.int32)
+        _nnodes = len(li)-inode if nnodes is None else nnodes
+        lb = np.array(li[inode:inode+_nnodes], dtype=np.int32)
         print ("Fieldline: ", len(lb))
         print (lb)
         i_f = i_f[:,:,lb,:]
@@ -306,15 +307,15 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             ndim = len(nsize)
             nphi = nsize[0] if iphi is None else 1
             iphi = 0 if iphi is None else iphi
-            nnodes = nsize[2] if nnodes is None else nnodes
+            _nnodes = nsize[2] if nnodes is None else nnodes
             nmu = nsize[1]
             nvp = nsize[3]
             start = (iphi,0,inode,0)
-            count = (nphi,nmu,nnodes,nvp)
+            count = (nphi,nmu,_nnodes,nvp)
             print ("Reading: ", start, count)
             i_f = f.read('i_f', start=start, count=count).astype('float64')
             #e_f = f.read('e_f')
-        li = list(range(inode, inode+nnodes))
+        li = list(range(inode, inode+_nnodes))
         lb = np.array(li, dtype=np.int32)
 
     if i_f.shape[3] == 31:
@@ -1048,12 +1049,13 @@ def main():
     t0 = time.time()
     for i in xrange(istart, istart+num_training_updates):
         (data, lb) = next(iter(training_loader))
+        ns = torch.Tensor(np.random.normal(0.0, data.numpy()*0.1, size=data.numpy().shape)).to(device)
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
         
-        vq_loss, data_recon, perplexity, dloss = model(data)
+        vq_loss, data_recon, perplexity, dloss = model(data+ns)
         #recon_error = torch.mean((data_recon - data)**2) / data_variance
-        recon_error = torch.mean((data_recon - data)**2)
+        recon_error = torch.sum((data_recon - data)**2)/data.shape[0]
         physics_error = 0.0
         if args.physicsloss and (i % args.physicsloss_interval == 0):
             den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
