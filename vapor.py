@@ -825,6 +825,8 @@ def main():
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
+    parser.add_argument('-H', '--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
+    parser.add_argument('-H', '--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
     parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
@@ -920,8 +922,8 @@ def main():
     assert args.batch_size % num_channels == 0
 
     num_hiddens = args.num_hiddens
-    num_residual_hiddens = 32
-    num_residual_layers = 2
+    num_residual_hiddens = args.num_residual_hiddens
+    num_residual_layers = args.num_residual_layers
 
     embedding_dim = args.embedding_dim
     num_embeddings = 512
