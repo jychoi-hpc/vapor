@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+Credit: https://github.com/zalandoresearch/pytorch-vq-vae
+"""
 from __future__ import print_function
 
 import matplotlib.pyplot as plt
@@ -522,6 +525,7 @@ class Encoder(nn.Module):
 
         self._rescale=rescale
         print ("Model rescale: %s"%self._rescale)
+        print ("in_channels, num_hiddens:", in_channels, num_hiddens)
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
@@ -827,6 +831,7 @@ def main():
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
     parser.add_argument('--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
     parser.add_argument('--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
+    parser.add_argument('--num_channels', help='num_channels', type=int, default=16)
     parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
@@ -843,14 +848,14 @@ def main():
     parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
     parser.add_argument('--iphi', help='iphi', type=int)
     parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
-    parser.add_argument('--overwrap', help='overwrap', type=int, default=2)
+    parser.add_argument('--overwrap', help='overwrap', type=int, default=1)
     parser.add_argument('--inode', help='inode', type=int, default=0)
     parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
     parser.add_argument('--rescale', help='rescale', type=int, default=None)
-    parser.add_argument('--nchannels', help='nchannels', type=int, default=16)
     parser.add_argument('--learndiff', help='learndiff', action='store_true')
     parser.add_argument('--learndiff2', help='learndiff2', action='store_true')
     parser.add_argument('--fieldline', help='fieldline', action='store_true')
+    parser.add_argument('--overwrite', help='overwrite', action='store_true')
     args = parser.parse_args()
 
     if not args.nompi:
@@ -889,7 +894,7 @@ def main():
             torch.cuda.manual_seed(args.seed)
 
     # %%
-    num_channels = args.nchannels
+    num_channels = args.num_channels
 
     ## This is the original setting
         # batch_size = 256
@@ -919,7 +924,6 @@ def main():
         # num_embeddings = 512
 
     batch_size = args.batch_size
-    assert args.batch_size % num_channels == 0
 
     num_hiddens = args.num_hiddens
     num_residual_hiddens = args.num_residual_hiddens
@@ -932,7 +936,8 @@ def main():
     decay = 0.99
     learning_rate = 1e-3
 
-    prefix='xgc-%s-batch%d-edim%d-nhidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens)
+    #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
+    prefix='xgc-%s'%(args.exp)
     logging.info ('prefix: %s' % prefix)
 
     # %%
@@ -1031,7 +1036,8 @@ def main():
 
     # %%
     # Load checkpoint
-    _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
+    _istart, _model, _dmodel = 0, None, None
+    if not args.overwrite: _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
     if _model is not None:
         istart = _istart + 1
         model = _model
@@ -1051,13 +1057,15 @@ def main():
     t0 = time.time()
     for i in xrange(istart, istart+num_training_updates):
         (data, lb) = next(iter(training_loader))
+        # print ("Training:", lb)
         ns = torch.Tensor(np.random.normal(0.0, data.numpy()*0.1, size=data.numpy().shape)).to(device)
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
         
         vq_loss, data_recon, perplexity, dloss = model(data+ns)
-        #recon_error = torch.mean((data_recon - data)**2) / data_variance
-        recon_error = torch.sum((data_recon - data)**2)/data.shape[0]
+        ## mean squared error: torch.mean((data_recon - data)**2)
+        ## relative variance
+        recon_error = F.mse_loss(data_recon, data) / data_variance
         physics_error = 0.0
         if args.physicsloss and (i % args.physicsloss_interval == 0):
             den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
@@ -1119,6 +1127,7 @@ def main():
     logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
 if __name__ == "__main__":
+    # torch.set_default_tensor_type(torch.DoubleTensor)
 
     ## (2020/11) Temporary fix. pytorch reset affinity. This is to rollback.
     if hasattr(os, 'sched_getaffinity'):
