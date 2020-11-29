@@ -44,6 +44,8 @@ import xgc4py
 from tqdm import tqdm
 
 import sys
+from datetime import datetime
+from pathlib import Path
 
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -52,6 +54,10 @@ Z0, zmu, zsig, zmin, zmax = None, None, None, None, None
 pidmap = dict()
 args = None
 comm, size, rank = None, 1, 0
+
+# %%
+def log(*args, logtype='debug', sep=' '):
+    getattr(logging, logtype)(sep.join(map(str, args)))
 
 # %%
 def init(counter):
@@ -296,13 +302,13 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             nvp = nsize[3]
             start = (iphi,0,0,0)
             count = (nphi,nmu,_nnodes,nvp)
-            print ("Reading: ", start, count)
+            logging.info (f"Reading: {start} {count}")
             i_f = f.read('i_f', start=start, count=count).astype('float64')
         
         _nnodes = len(li)-inode if nnodes is None else nnodes
         lb = np.array(li[inode:inode+_nnodes], dtype=np.int32)
-        print ("Fieldline: ", len(lb))
-        print (lb)
+        logging.info (f"Fieldline: {len(lb)}")
+        logging.info (f"{lb}")
         i_f = i_f[:,:,lb,:]
     else:
         with ad2.open(fname, 'r') as f:
@@ -315,7 +321,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             nvp = nsize[3]
             start = (iphi,0,inode,0)
             count = (nphi,nmu,_nnodes,nvp)
-            print ("Reading: ", start, count)
+            logging.info (f"Reading: {start} {count}")
             i_f = f.read('i_f', start=start, count=count).astype('float64')
             #e_f = f.read('e_f')
         li = list(range(inode, inode+_nnodes))
@@ -524,8 +530,8 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self._rescale=rescale
-        print ("Model rescale: %s"%self._rescale)
-        print ("in_channels, num_hiddens:", in_channels, num_hiddens)
+        log ("Model rescale:", self._rescale)
+        log ("in_channels, num_hiddens:", in_channels, num_hiddens)
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
                                  out_channels=in_channels,
@@ -705,7 +711,7 @@ class Model(nn.Module):
         Learn diff
         """
         self._learndiff = learndiff
-        print ("Model learndiff: %s"%self._learndiff)
+        log ("Model learndiff: %s"%self._learndiff)
         if self._learndiff:
             """
             self._encoder2 = Encoder(num_channels, num_hiddens,
@@ -775,17 +781,17 @@ def load_checkpoint(DIR, prefix, model):
         with open('%s/checkpoint.txt'%(_prefix), 'r') as f:
             _istart = int(f.readline())
         fname = '%s/checkpoint.%d.pytorch'%(_prefix, _istart)
-        print ('Checkpoint:', fname)
+        log ('Checkpoint:', fname)
         _model = torch.load(fname)
         _model.eval()
     except:
-        print ("Error:", sys.exc_info()[0])
-        print ("No restart info")
+        log ("Error:", sys.exc_info()[0])
+        log ("No restart info")
         pass
 
     try:
         fname = '%s/checkpoint-dmodel.%d.pytorch'%(_prefix, _istart)
-        print ('Checkpoint:', fname)
+        log ('Checkpoint:', fname)
         _dmodel = torch.load(fname)
     except:
         pass
@@ -812,7 +818,7 @@ def save_checkpoint(DIR, prefix, model, err, epoch, dmodel=None):
         torch.save(dmodel, fname)
     with open('%s/checkpoint.txt'%(_prefix), 'w+') as f:
         f.write(str(epoch))
-    print ("Saved checkpoint: %s"%(fname))
+    log ("Saved checkpoint: %s"%(fname))
 
 def main():
     global device
@@ -827,12 +833,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp', help='exp', default='m1')
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
-    parser.add_argument('-e', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
+    parser.add_argument('-E', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
-    parser.add_argument('--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
-    parser.add_argument('--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
-    parser.add_argument('--num_channels', help='num_channels', type=int, default=16)
-    parser.add_argument('-b', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
+    parser.add_argument('-R', '--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
+    parser.add_argument('-L', '--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
+    parser.add_argument('-C', '--num_channels', help='num_channels', type=int, default=16)
+    parser.add_argument('-B', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
@@ -856,7 +862,12 @@ def main():
     parser.add_argument('--learndiff2', help='learndiff2', action='store_true')
     parser.add_argument('--fieldline', help='fieldline', action='store_true')
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
+    parser.add_argument('--log', help='log', action='store_true')
     args = parser.parse_args()
+
+    DIR=args.wdir
+    prefix='exp-B%d-C%d-H%d-R%d-L%d-E%d-%s'%\
+        (args.batch_size, args.num_channels, args.num_hiddens, args.num_residual_hiddens, args.num_residual_layers, args.embedding_dim, args.exp)
 
     if not args.nompi:
         from mpi4py import MPI
@@ -869,9 +880,15 @@ def main():
         rank = 0
 
     fmt = '[%d:%%(levelname)s] %%(message)s'%(rank)
-    print (fmt)
-    #logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
-    logging.basicConfig(level=logging.DEBUG, format=fmt)
+    handlers = [logging.StreamHandler()]
+    if args.log:
+        _prefix = '%s/%s'%(DIR, prefix)
+        Path(_prefix).mkdir(parents=True, exist_ok=True)
+        suffix = datetime.now().strftime("%Y%m%d-%H%M%S")
+        pid = os.getpid()
+        fname = "%s/%s-%s-%d.log"%(_prefix, prefix, suffix, pid)
+        handlers.append(logging.FileHandler(fname))
+    logging.basicConfig(level=logging.DEBUG, format=fmt, handlers=handlers)
 
     logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
     logging.debug("All settings used:") 
@@ -883,7 +900,6 @@ def main():
     logging.info ('DIR: %s' % args.wdir)
 
     # %%
-    DIR=args.wdir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info ('device: %s' % device)
 
@@ -937,7 +953,6 @@ def main():
     learning_rate = 1e-3
 
     #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
-    prefix='xgc-%s'%(args.exp)
     logging.info ('prefix: %s' % prefix)
 
     # %%
@@ -970,8 +985,8 @@ def main():
     #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
     #Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
 
-    print ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
-    print ('Minimum training epoch:', Zif.shape[0]/batch_size)
+    log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
+    log ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
     lx = list()
     ly = list()
@@ -987,7 +1002,7 @@ def main():
         ly.append(zlb[i:i+num_channels])
 
     data_variance = np.var(lx, dtype=np.float64)
-    print ('data_variance', data_variance)
+    log ('data_variance', data_variance)
 
     # %% 
     # Loadding
@@ -1041,7 +1056,7 @@ def main():
     if _model is not None:
         istart = _istart + 1
         model = _model
-    print (istart)
+    log (istart)
 
     # %%
     nworkers = args.nworkers if args.nworkers is not None else 8
