@@ -886,7 +886,7 @@ def main():
         Path(_prefix).mkdir(parents=True, exist_ok=True)
         suffix = datetime.now().strftime("%Y%m%d-%H%M%S")
         pid = os.getpid()
-        fname = "%s/%s-%s-%d.log"%(_prefix, prefix, suffix, pid)
+        fname = "%s/run-%s-%d.log"%(_prefix, suffix, pid)
         handlers.append(logging.FileHandler(fname))
     logging.basicConfig(level=logging.DEBUG, format=fmt, handlers=handlers)
 
