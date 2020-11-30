@@ -863,7 +863,7 @@ def main():
     parser.add_argument('--fieldline', help='fieldline', action='store_true')
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
-    parser.add_argument('--noise', help='noise', type=float, default=0.1)
+    parser.add_argument('--noise', help='noise', type=float, default=None)
     args = parser.parse_args()
 
     DIR=args.wdir
