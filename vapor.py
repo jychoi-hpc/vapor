@@ -863,7 +863,7 @@ def main():
     parser.add_argument('--fieldline', help='fieldline', action='store_true')
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
-    parser.add_argument('--addnoise', help='addnoise', action='store_true')
+    parser.add_argument('--noise', help='noise', type=float, default=0.1)
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -1075,8 +1075,8 @@ def main():
     for i in xrange(istart, istart+num_training_updates):
         (data, lb) = next(iter(training_loader))
         # print ("Training:", lb)
-        if args.addnoise:
-            ns = torch.Tensor(np.random.normal(0.0, data.numpy()*0.1, size=data.numpy().shape)).to(device)
+        if args.noise is not None:
+            ns = torch.Tensor(np.random.normal(0.0, data.numpy()*args.noise, size=data.numpy().shape)).to(device)
         data = data.to(device)
         optimizer.zero_grad() # clear previous gradients
         
