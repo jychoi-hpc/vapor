@@ -274,7 +274,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         for i in range(_nnodes):
             G.add_edge(i, nextnode[i])
             G.add_edge(nextnode[i], i)
-        cc = [x for x in list(nx.connected_components(G)) if len(x) >= nchunk]
+        cc = [x for x in list(nx.connected_components(G)) if len(x) >= 16]
 
         li = list()
         for k, components in enumerate(cc):
@@ -289,7 +289,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             
             path = nx.dag_longest_path(DG)
             #print (k, len(components), path[0])
-            for i in path[:len(path)-len(path)%nchunk]:
+            for i in path[:len(path)-len(path)%16]:
                 li.append(i)
 
         with ad2.open(fname, 'r') as f:
