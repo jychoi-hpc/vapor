@@ -838,7 +838,7 @@ def main():
     parser.add_argument('-R', '--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
     parser.add_argument('-L', '--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
     parser.add_argument('-C', '--num_channels', help='num_channels', type=int, default=16)
-    parser.add_argument('-B', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=256)
+    parser.add_argument('-B', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=1)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
@@ -1113,9 +1113,10 @@ def main():
         train_res_physics_error.append(physics_error)
 
         if i % args.log_interval == 0:
+            abs_error = torch.max(torch.abs(data_recon-data))
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
-            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {abs_error.item():g} {len(training_loader.dataset)} {len(data)}')
             if args.learndiff2:
                 logging.info(f'{i} dloss: {dloss.item():g}')
             # logging.info('')
