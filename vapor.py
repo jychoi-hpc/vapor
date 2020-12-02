@@ -59,6 +59,12 @@ comm, size, rank = None, 1, 0
 def log(*args, logtype='debug', sep=' '):
     getattr(logging, logtype)(sep.join(map(str, args)))
 
+def info(*args, logtype='info', sep=' '):
+    getattr(logging, logtype)(sep.join(map(str, args)))
+
+def debug(*args, logtype='debug', sep=' '):
+    getattr(logging, logtype)(sep.join(map(str, args)))
+
 # %%
 def init(counter):
     global args
@@ -378,6 +384,72 @@ def average_gradients(model):
             x = comm.allreduce(param.data, op=MPI.SUM)
             param.data = x/size
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
+
+# %%
+def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None):
+    mode = model.training
+    model.eval()
+    with torch.no_grad():
+        lx = list()
+        ly = list()
+        for i in range(0,len(Zif),num_channels):
+            X = Zif[i:i+num_channels,:,:]
+            N = X.astype(np.float32)
+            lx.append(N)
+            ly.append(zlb[i])
+
+        lz = list()
+        nbatch = 1
+        for i in range(0, len(lx), nbatch):
+            valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
+            vq_encoded = model._encoder(valid_originals)
+            vq_output_eval = model._pre_vq_conv(vq_encoded)
+            _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+            valid_reconstructions = model._decoder(valid_quantize)
+            #print (valid_originals.sum().item(), valid_reconstructions.shape, valid_reconstructions.sum().item())
+
+            drecon = 0
+            _, nchannel, dim1, dim2 = valid_originals.shape
+            if dmodel is not None:
+                dx = (valid_originals-valid_reconstructions).view(-1, nchannel*dim1*dim2)
+                drecon = dmodel(dx).view(-1, nchannel, dim1, dim2)   
+
+            lz.append((valid_reconstructions+drecon).cpu().data.numpy())
+
+        Xbar = np.array(lz).reshape([-1,dim1,dim2])
+
+        ## Normalize
+        xmin = np.min(Xbar, axis=(1,2))
+        xmax = np.max(Xbar, axis=(1,2))
+        Xbar = (Xbar-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+
+        ## Un-normalize
+        X0 = Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
+    model.train(mode)
+    
+    return (X0, Xbar, np.mean(X0, axis=(1,2)))
+
+def estimate_error(model, Zif, zmin, zmax, num_channels):
+    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels)
+
+    rmse_list = list()
+    abs_list = list()
+    for i in range(len(Xbar)):
+        Z = Zif[i,:,:]
+        X = Xbar[i,:,:]
+        ## RMSE
+        rmse = np.sqrt(np.sum((Z-X)**2)/Z.size)
+        rmse_list.append(rmse)
+        ## ABS error
+        abserr = np.max(np.abs(Z-X))
+        abs_list.append(abserr)
+
+    max_rmse_list = [max(rmse_list[i: i+num_channels]) for i in xrange(0, len(rmse_list), num_channels)]
+    max_abs_list = [max(abs_list[i: i+num_channels]) for i in xrange(0, len(abs_list), num_channels)]
+    max_abs_list = np.array(max_abs_list)
+    # max_abs_list = max_abs_list/sum(max_abs_list)
+
+    return max_abs_list
 
 # %%
 class VectorQuantizer(nn.Module):
@@ -864,6 +936,7 @@ def main():
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
     parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
+    parser.add_argument('--resample', help='resample', action='store_true')
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -1071,7 +1144,10 @@ def main():
 
     counter = mp.Value('i', 0)
     executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
-    num_training_updates=args.num_training_updates
+    num_training_updates = args.num_training_updates
+    resampling_interval = len(lx)//batch_size
+    logging.info (f'Rsampling, resampling interval: {args.resample} {resampling_interval}')
+    total_trained = np.ones(len(lx), dtype=np.int)
     logging.info ('Training: %d' % num_training_updates)
     model.train()
     ns = 0.0 
@@ -1119,13 +1195,22 @@ def main():
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error)
 
+        if args.resample and (i % resampling_interval == 0):
+            err = estimate_error(model, Zif, zmin, zmax, num_channels)
+            idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
+            lxx = [ lx[i] for i in idx ]
+            lyy = [ ly[i] for i in idx ]
+
+            training_data = torch.utils.data.TensorDataset(torch.Tensor(lxx), torch.Tensor(lyy))
+            training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
+            total_trained[idx] += 1
+
         if i % args.log_interval == 0:
-            abs_error = torch.max(torch.abs(data_recon-data))
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
-            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {abs_error.item():g} {len(training_loader.dataset)} {len(data)}')
+            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
             if args.learndiff2:
-                logging.info(f'{i} dloss: {dloss.item():g}')
+                logging.info(f'{i} dloss: {dloss.item():g}')            
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
@@ -1148,6 +1233,34 @@ def main():
     logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
     logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
     logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
+
+    logging.info ('Reconstructing ...')
+    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel)
+    log (Zif.shape, Xbar.shape)
+
+    rmse_list = list()
+    abs_list = list()
+    psnr_list = list()
+    ssim_list = list()
+    for i in range(len(Xbar)):
+        Z = Zif[i,:,:]
+        X = Xbar[i,:,:]
+        ## RMSE
+        rmse = np.sqrt(np.sum((Z-X)**2)/Z.size)
+        rmse_list.append(rmse)
+        ## ABS error
+        abserr = np.max(np.abs(Z-X))
+        abs_list.append(abserr)
+        ## PSNR
+        psnr = 20*np.log10(1.0/np.sqrt(np.sum((Z-X)**2)/Z.size))
+        psnr_list.append(psnr)
+        ## SSIM
+        #_ssim = ssim(Z, X, data_range=X.max()-X.min())
+        #ssim_list.append(_ssim)
+    info ('RMSE error: %g %g %g'%(np.min(rmse_list), np.mean(rmse_list), np.max(rmse_list)))
+    info ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
+    info ('total_trained:')
+    info (total_trained)
 
 if __name__ == "__main__":
     # torch.set_default_tensor_type(torch.DoubleTensor)
