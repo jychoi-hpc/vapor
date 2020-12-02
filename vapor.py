@@ -863,7 +863,7 @@ def main():
     parser.add_argument('--fieldline', help='fieldline', action='store_true')
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
-    parser.add_argument('--noise', help='noise', type=float, default=None)
+    parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -909,6 +909,10 @@ def main():
         random.seed(args.seed)
         if device.type == 'cuda':
             torch.cuda.manual_seed(args.seed)
+
+    ## to support noise is given by "--noise=10**0"
+    if args.noise == 0.0 or args.noise == 1.0:
+        args.noise = None
 
     # %%
     num_channels = args.num_channels
