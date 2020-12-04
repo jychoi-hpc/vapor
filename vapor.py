@@ -938,6 +938,7 @@ def main():
     parser.add_argument('--log', help='log', action='store_true')
     parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
     parser.add_argument('--resampling', help='resampling', action='store_true')
+    parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -1149,7 +1150,7 @@ def main():
     counter = mp.Value('i', 0)
     executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
     num_training_updates = args.num_training_updates
-    resampling_interval = len(lx)//batch_size
+    resampling_interval = len(lx)//batch_size if args.resampling_interval is None else args.resampling_interval
     logging.info (f'Rsampling, resampling interval: {args.resampling} {resampling_interval}')
     total_trained = np.ones(len(lx), dtype=np.int)
     logging.info ('Training: %d' % num_training_updates)
@@ -1216,9 +1217,8 @@ def main():
             logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
             if args.learndiff2:
                 logging.info(f'{i} dloss: {dloss.item():g}')
-            # rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels)
-            # logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
-            # logging.info('')
+            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels)
+            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
