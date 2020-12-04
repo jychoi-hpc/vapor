@@ -35,6 +35,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.autograd.profiler as profiler
+from torch.backends import cudnn
 
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
@@ -444,12 +445,12 @@ def estimate_error(model, Zif, zmin, zmax, num_channels):
         abserr = np.max(np.abs(Z-X))
         abs_list.append(abserr)
 
-    max_rmse_list = [max(rmse_list[i: i+num_channels]) for i in xrange(0, len(rmse_list), num_channels)]
-    max_abs_list = [max(abs_list[i: i+num_channels]) for i in xrange(0, len(abs_list), num_channels)]
-    max_abs_list = np.array(max_abs_list)
+    # max_rmse_list = [max(rmse_list[i: i+num_channels]) for i in xrange(0, len(rmse_list), num_channels)]
+    # max_abs_list = [max(abs_list[i: i+num_channels]) for i in xrange(0, len(abs_list), num_channels)]
+    # max_abs_list = np.array(max_abs_list)
     # max_abs_list = max_abs_list/sum(max_abs_list)
 
-    return max_abs_list
+    return (rmse_list, abs_list)
 
 # %%
 class VectorQuantizer(nn.Module):
@@ -936,7 +937,7 @@ def main():
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
     parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
-    parser.add_argument('--resample', help='resample', action='store_true')
+    parser.add_argument('--resampling', help='resampling', action='store_true')
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -978,10 +979,13 @@ def main():
     logging.info ('device: %s' % device)
 
     if args.seed is not None:
-        torch.manual_seed(args.seed)
         random.seed(args.seed)
-        if device.type == 'cuda':
-            torch.cuda.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed(args.seed)
+        # torch.set_deterministic(True)
+        cudnn.deterministic = True # type: ignore
+        cudnn.benchmark = False # type: ignore
 
     ## to support noise is given by "--noise=10**0"
     if args.noise == 0.0 or args.noise == 1.0:
@@ -1134,7 +1138,7 @@ def main():
     if _model is not None:
         istart = _istart + 1
         model = _model
-    log (istart)
+    log ('istart:', istart)
 
     # %%
     nworkers = args.nworkers if args.nworkers is not None else 8
@@ -1146,7 +1150,7 @@ def main():
     executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
     num_training_updates = args.num_training_updates
     resampling_interval = len(lx)//batch_size
-    logging.info (f'Rsampling, resampling interval: {args.resample} {resampling_interval}')
+    logging.info (f'Rsampling, resampling interval: {args.resampling} {resampling_interval}')
     total_trained = np.ones(len(lx), dtype=np.int)
     logging.info ('Training: %d' % num_training_updates)
     model.train()
@@ -1195,8 +1199,9 @@ def main():
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error)
 
-        if args.resample and (i % resampling_interval == 0):
-            err = estimate_error(model, Zif, zmin, zmax, num_channels)
+        if args.resampling and (i % resampling_interval == 0):
+            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels)
+            err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
             lxx = [ lx[i] for i in idx ]
             lyy = [ ly[i] for i in idx ]
@@ -1210,7 +1215,9 @@ def main():
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
             logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
             if args.learndiff2:
-                logging.info(f'{i} dloss: {dloss.item():g}')            
+                logging.info(f'{i} dloss: {dloss.item():g}')
+            # rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels)
+            # logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
             # logging.info('')
         
         if (i % args.checkpoint_interval == 0) and (rank == 0):
@@ -1219,48 +1226,49 @@ def main():
 
     # %%
     model.eval()
-    (valid_originals, valid_labels) = next(iter(validation_loader))
-    valid_originals = valid_originals.to(device)
+    with torch.no_grad():
+        (valid_originals, valid_labels) = next(iter(validation_loader))
+        valid_originals = valid_originals.to(device)
 
-    vq_encoded = model._encoder(valid_originals)
-    vq_output_eval = model._pre_vq_conv(vq_encoded)
-    _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
-    valid_reconstructions = model._decoder(valid_quantize)
+        vq_encoded = model._encoder(valid_originals)
+        vq_output_eval = model._pre_vq_conv(vq_encoded)
+        _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+        valid_reconstructions = model._decoder(valid_quantize)
 
-    logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
-    logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
-    logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
-    logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
-    logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
-    logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
+        logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
+        logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
+        logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
+        logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
+        logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
+        logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
-    logging.info ('Reconstructing ...')
-    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel)
-    log (Zif.shape, Xbar.shape)
+        logging.info ('Reconstructing ...')
+        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel)
+        log (Zif.shape, Xbar.shape)
 
-    rmse_list = list()
-    abs_list = list()
-    psnr_list = list()
-    ssim_list = list()
-    for i in range(len(Xbar)):
-        Z = Zif[i,:,:]
-        X = Xbar[i,:,:]
-        ## RMSE
-        rmse = np.sqrt(np.sum((Z-X)**2)/Z.size)
-        rmse_list.append(rmse)
-        ## ABS error
-        abserr = np.max(np.abs(Z-X))
-        abs_list.append(abserr)
-        ## PSNR
-        psnr = 20*np.log10(1.0/np.sqrt(np.sum((Z-X)**2)/Z.size))
-        psnr_list.append(psnr)
-        ## SSIM
-        #_ssim = ssim(Z, X, data_range=X.max()-X.min())
-        #ssim_list.append(_ssim)
-    info ('RMSE error: %g %g %g'%(np.min(rmse_list), np.mean(rmse_list), np.max(rmse_list)))
-    info ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
-    info ('total_trained:')
-    info (total_trained)
+        rmse_list = list()
+        abs_list = list()
+        psnr_list = list()
+        ssim_list = list()
+        for i in range(len(Xbar)):
+            Z = Zif[i,:,:]
+            X = Xbar[i,:,:]
+            ## RMSE
+            rmse = np.sqrt(np.sum((Z-X)**2)/Z.size)
+            rmse_list.append(rmse)
+            ## ABS error
+            abserr = np.max(np.abs(Z-X))
+            abs_list.append(abserr)
+            ## PSNR
+            psnr = 20*np.log10(1.0/np.sqrt(np.sum((Z-X)**2)/Z.size))
+            psnr_list.append(psnr)
+            ## SSIM
+            #_ssim = ssim(Z, X, data_range=X.max()-X.min())
+            #ssim_list.append(_ssim)
+        info ('RMSE error: %g %g %g'%(np.min(rmse_list), np.mean(rmse_list), np.max(rmse_list)))
+        info ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
+        info ('total_trained:')
+        info (total_trained)
 
 if __name__ == "__main__":
     # torch.set_default_tensor_type(torch.DoubleTensor)
