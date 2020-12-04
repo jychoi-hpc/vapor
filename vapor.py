@@ -1160,9 +1160,10 @@ def main():
     for i in xrange(istart, istart+num_training_updates):
         (data, lb) = next(iter(training_loader))
         # print ("Training:", lb)
-        if args.noise is not None:
-            ns = torch.Tensor(np.random.normal(0.0, data.numpy()*args.noise, size=data.numpy().shape)).to(device)
         data = data.to(device)
+        if args.noise is not None:
+            ns = torch.normal(mean=0.0, std=data.detach()*args.noise)
+
         optimizer.zero_grad() # clear previous gradients
         
         vq_loss, data_recon, perplexity, dloss = model(data+ns)
