@@ -363,6 +363,27 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
+def read_nstx(expdir=None, offset=0, nframes=None, average=False, randomread=0.0, nchunk=16):
+    start = offset
+    count = nframes - nframes%nchunk
+    logging.info (f"Reading: nstx_data_ornl_demo_v2.bp {start} {count}")
+    fname = os.path.join(expdir, 'nstx_data_ornl_demo_v2.bp')
+    with ad2.open(fname,'r') as f:
+        gpiData = f.read('gpiData')[start:start+count,:,:]
+    
+    Z0 = gpiData.astype('float32')
+    zlb = np.array(range(start, start+count), dtype=np.int32)
+
+    #zlb = np.concatenate(li)
+    zmu = np.mean(Z0, axis=(1,2))
+    zsig = np.std(Z0, axis=(1,2))
+    zmin = np.min(Z0, axis=(1,2))
+    zmax = np.max(Z0, axis=(1,2))
+    Zif = (Z0 - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+
+    return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
+
+# %%
 """ Gradient averaging. """
 def average_gradients(model):
     try:
@@ -922,23 +943,36 @@ def main():
     parser.add_argument('--nompi', help='nompi', action='store_true')
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
-    parser.add_argument('--physicsloss', help='physicsloss', action='store_true')
-    parser.add_argument('--physicsloss_interval', help='physicsloss_interval (default: %(default)s)', type=int, default=1)
-    parser.add_argument('--randomread', help='randomread', type=float, default=0.0)
-    parser.add_argument('--iphi', help='iphi', type=int)
-    parser.add_argument('--splitfiles', help='splitfiles', action='store_true')
-    parser.add_argument('--overwrap', help='overwrap', type=int, default=1)
-    parser.add_argument('--inode', help='inode', type=int, default=0)
-    parser.add_argument('--nnodes', help='nnodes', type=int, default=None)
-    parser.add_argument('--rescale', help='rescale', type=int, default=None)
-    parser.add_argument('--learndiff', help='learndiff', action='store_true')
-    parser.add_argument('--learndiff2', help='learndiff2', action='store_true')
-    parser.add_argument('--fieldline', help='fieldline', action='store_true')
-    parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--log', help='log', action='store_true')
     parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
     parser.add_argument('--resampling', help='resampling', action='store_true')
     parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
+    parser.add_argument('--overwrite', help='overwrite', action='store_true')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
+    group.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='dataset', const='nstx')
+    parser.set_defaults(dataset='xgc')
+
+    group1 = parser.add_argument_group('XGC', 'XGC processing options')
+    group1.add_argument('--physicsloss', help='physicsloss', action='store_true')
+    group1.add_argument('--physicsloss_interval', help='physicsloss_interval (default: %(default)s)', type=int, default=1)
+    group1.add_argument('--randomread', help='randomread', type=float, default=0.0)
+    group1.add_argument('--iphi', help='iphi', type=int)
+    group1.add_argument('--splitfiles', help='splitfiles', action='store_true')
+    group1.add_argument('--overwrap', help='overwrap', type=int, default=1)
+    group1.add_argument('--inode', help='inode', type=int, default=0)
+    group1.add_argument('--nnodes', help='nnodes', type=int, default=None)
+    group1.add_argument('--rescale', help='rescale', type=int, default=None)
+    group1.add_argument('--learndiff', help='learndiff', action='store_true')
+    group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
+    group1.add_argument('--fieldline', help='fieldline', action='store_true')
+
+    group2 = parser.add_argument_group('NSTX', 'NSTX processing options')
+    ## 159065, 172585, 186106, 199626, 213146, 226667, 240187, 253708, 267228, 280749
+    group2.add_argument('--offset', help='offset', type=int, default=159065)
+    group2.add_argument('--nframes', help='nframes', type=int, default=16_000)
+
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -1039,38 +1073,45 @@ def main():
     logging.info ('prefix: %s' % prefix)
 
     # %%
-    xgcexp = xgc4py.XGC(args.datadir)
-    nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
-    
-    timesteps = args.timesteps
-    if args.splitfiles:
-        timesteps = np.array_split(np.array(timesteps), size)[rank]
-    f0_data_list = list()
-    logging.info (f'Data dir: {args.datadir}')
-    for istep in timesteps:
-        logging.info (f'Reading: {istep}')
-        f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes, \
-            randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
-
-    lst = list(zip(*f0_data_list))
-
+    ## Reading data
     global Z0, zmu, zsig, zmin, zmax, zlb
-    Z0 = np.r_[(lst[0])]
-    Zif = np.r_[(lst[1])]
-    zmu = np.r_[(lst[2])]
-    zsig = np.r_[(lst[3])]
-    zmin = np.r_[(lst[4])]
-    zmax = np.r_[(lst[5])]
-    zlb = np.r_[(lst[6])]
-    ## z-score normalization
-    #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
-    ## min-max normalization
-    #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
-    #Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+    info ('Dataset:', args.dataset)
+    if args.dataset == 'xgc':
+        xgcexp = xgc4py.XGC(args.datadir)
+        nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
+        
+        timesteps = args.timesteps
+        if args.splitfiles:
+            timesteps = np.array_split(np.array(timesteps), size)[rank]
+        f0_data_list = list()
+        logging.info (f'Data dir: {args.datadir}')
+        for istep in timesteps:
+            logging.info (f'Reading: {istep}')
+            f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes, \
+                randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
+
+        lst = list(zip(*f0_data_list))
+
+        Z0 = np.r_[(lst[0])]
+        Zif = np.r_[(lst[1])]
+        zmu = np.r_[(lst[2])]
+        zsig = np.r_[(lst[3])]
+        zmin = np.r_[(lst[4])]
+        zmax = np.r_[(lst[5])]
+        zlb = np.r_[(lst[6])]
+        ## z-score normalization
+        #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
+        ## min-max normalization
+        #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
+        #Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+
+    if args.dataset == 'nstx':
+        Z0, Zif, zmu, zsig, zmin, zmax, zlb = read_nstx(args.datadir, args.offset, args.nframes)
 
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
+    ## Preparing training and validation set
     lx = list()
     ly = list()
     for i in range(0,len(Zif)-num_channels+1,num_channels//args.overwrap):
