@@ -971,7 +971,7 @@ def main():
     group2 = parser.add_argument_group('NSTX', 'NSTX processing options')
     ## 159065, 172585, 186106, 199626, 213146, 226667, 240187, 253708, 267228, 280749
     group2.add_argument('--offset', help='offset', type=int, default=159065)
-    group2.add_argument('--nframes', help='nframes', type=int, default=16_000)
+    group2.add_argument('--nframes', help='nframes', type=int, default=16_384)
 
     args = parser.parse_args()
 
