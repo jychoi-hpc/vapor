@@ -934,6 +934,11 @@ class VAE(nn.Module):
         self.fc3 = nn.Linear(self.nz, self.nh)
         self.fc4 = nn.Linear(self.nh, self.nx*self.ny)
 
+        self._residual_stack = ResidualStack(in_channels=self.nc,
+                                             num_hiddens=self.nc,
+                                             num_residual_layers=2,
+                                             num_residual_hiddens=self.nc//2)
+
     def encode(self, x):
         x = F.relu(self.fc1(x))
         return self.fc21(x), self.fc22(x)
@@ -999,6 +1004,7 @@ def main():
     parser.add_argument('--resampling', help='resampling', action='store_true')
     parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
+    parser.add_argument('--learning_rate', help='learning_rate', type=float, default=1e-3)
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -1122,7 +1128,7 @@ def main():
 
     commitment_cost = 0.25
     decay = 0.99
-    learning_rate = 1e-3
+    learning_rate = args.learning_rate
 
     #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
     logging.info ('prefix: %s' % prefix)
@@ -1220,7 +1226,7 @@ def main():
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
-        model = VAE(args.num_channels, nx, ny, nx*ny//10, nx*ny//10//8).to(device)
+        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -1288,7 +1294,7 @@ def main():
         if args.model == 'vae':
             recon_batch, mu, logvar = model(data)
             loss = model.loss_function(recon_batch, data, mu, logvar)
-            recon_error = F.mse_loss(recon_batch, data.view(-1, 80*64)) / data_variance
+            recon_error = F.mse_loss(recon_batch, data.view(-1, nx*ny)) / data_variance
             perplexity = torch.tensor(0)
             physics_error = 0.0
 
