@@ -917,8 +917,36 @@ def save_checkpoint(DIR, prefix, model, err, epoch, dmodel=None):
         f.write(str(epoch))
     log ("Saved checkpoint: %s"%(fname))
 
+class ResidualLinear(nn.Module):
+    """
+    in_channels, num_hiddens, num_residual_hiddens: in, out, hidden
+    """
+    def __init__(self, in_channels, num_hiddens, num_residual_hiddens):
+        super(ResidualLinear, self).__init__()
+        self._block = nn.Sequential(
+            nn.ReLU(True),
+            nn.Linear(in_channels, num_residual_hiddens),
+            nn.ReLU(True),
+            nn.Linear(num_residual_hiddens, num_hiddens)
+        )
+    
+    def forward(self, x):
+        return x + self._block(x)
+
+class ResidualLinearStack(nn.Module):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
+        super(ResidualLinearStack, self).__init__()
+        self._num_residual_layers = num_residual_layers
+        self._layers = nn.ModuleList([ResidualLinear(in_channels, num_hiddens, num_residual_hiddens)
+                             for _ in range(self._num_residual_layers)])
+
+    def forward(self, x):
+        for i in range(self._num_residual_layers):
+            x = self._layers[i](x)
+        return F.relu(x)
+
 class VAE(nn.Module):
-    def __init__(self, nc, nx, ny, nh, nz):
+    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers):
         super(VAE, self).__init__()
 
         self.nc = nc
@@ -926,6 +954,8 @@ class VAE(nn.Module):
         self.ny = ny
         self.nh = nh
         self.nz = nz
+        self.num_residual_hiddens = num_residual_hiddens
+        self.num_residual_layers = num_residual_layers
         info ("VAE (nc,nx,ny,nh,nz):", nc, nx, ny, nh, nz)
 
         self.fc1 = nn.Linear(self.nx*self.ny, self.nh)
@@ -934,13 +964,14 @@ class VAE(nn.Module):
         self.fc3 = nn.Linear(self.nz, self.nh)
         self.fc4 = nn.Linear(self.nh, self.nx*self.ny)
 
-        self._residual_stack = ResidualStack(in_channels=self.nc,
-                                             num_hiddens=self.nc,
-                                             num_residual_layers=2,
-                                             num_residual_hiddens=self.nc//2)
+        self.rs = ResidualLinearStack(in_channels=self.nh,
+                                    num_hiddens=self.nh,
+                                    num_residual_layers=num_residual_layers,
+                                    num_residual_hiddens=num_residual_hiddens)
 
     def encode(self, x):
         x = F.relu(self.fc1(x))
+        x = self.rs(x)
         return self.fc21(x), self.fc22(x)
 
     def reparameterize(self, mu, logvar):
@@ -950,7 +981,10 @@ class VAE(nn.Module):
 
     def decode(self, z):
         x = F.relu(self.fc3(z))
+        x = self.rs(x)
         x = torch.sigmoid(self.fc4(x))
+        # x = F.relu(self.fc4(x))
+        # x = self.fc4(x)
         return x
 
     def forward(self, x):
@@ -1226,7 +1260,7 @@ def main():
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
-        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4).to(device)
+        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
