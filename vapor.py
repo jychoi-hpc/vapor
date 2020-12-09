@@ -976,7 +976,7 @@ def main():
     # %%
     # Main start
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp', help='exp', default='m1')
+    parser.add_argument('--exp', help='exp', default='')
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('-E', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=64)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
@@ -1031,8 +1031,8 @@ def main():
     args = parser.parse_args()
 
     DIR=args.wdir
-    prefix='exp-B%d-C%d-H%d-R%d-L%d-E%d-%s'%\
-        (args.batch_size, args.num_channels, args.num_hiddens, args.num_residual_hiddens, args.num_residual_layers, args.embedding_dim, args.exp)
+    prefix='exp-%s-%s-B%d-C%d-H%d-R%d-L%d-E%d-%s'%\
+        (args.dataset, args.model, args.batch_size, args.num_channels, args.num_hiddens, args.num_residual_hiddens, args.num_residual_layers, args.embedding_dim, args.exp)
 
     if not args.nompi:
         from mpi4py import MPI
