@@ -363,7 +363,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
-def read_nstx(expdir=None, offset=0, nframes=None, average=False, randomread=0.0, nchunk=16):
+def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomread=0.0, nchunk=16):
     start = offset
     count = nframes - nframes%nchunk
     logging.info (f"Reading: nstx_data_ornl_demo_v2.bp {start} {count}")
@@ -408,7 +408,7 @@ def average_gradients(model):
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
-def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None):
+def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae'):
     mode = model.training
     model.eval()
     with torch.no_grad():
@@ -424,19 +424,24 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None):
         nbatch = 1
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
-            vq_encoded = model._encoder(valid_originals)
-            vq_output_eval = model._pre_vq_conv(vq_encoded)
-            _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
-            valid_reconstructions = model._decoder(valid_quantize)
-            #print (valid_originals.sum().item(), valid_reconstructions.shape, valid_reconstructions.sum().item())
-
-            drecon = 0
             _, nchannel, dim1, dim2 = valid_originals.shape
-            if dmodel is not None:
-                dx = (valid_originals-valid_reconstructions).view(-1, nchannel*dim1*dim2)
-                drecon = dmodel(dx).view(-1, nchannel, dim1, dim2)   
+            if modelname == 'vqvae':
+                vq_encoded = model._encoder(valid_originals)
+                vq_output_eval = model._pre_vq_conv(vq_encoded)
+                _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+                valid_reconstructions = model._decoder(valid_quantize)
+                #print (valid_originals.sum().item(), valid_reconstructions.shape, valid_reconstructions.sum().item())
 
-            lz.append((valid_reconstructions+drecon).cpu().data.numpy())
+                drecon = 0
+                if dmodel is not None:
+                    dx = (valid_originals-valid_reconstructions).view(-1, nchannel*dim1*dim2)
+                    drecon = dmodel(dx).view(-1, nchannel, dim1, dim2)
+                lz.append((valid_reconstructions+drecon).cpu().data.numpy())
+
+            if modelname == 'vae':
+                valid_reconstructions, mu, logvar = model(valid_originals)
+                valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
+                lz.append((valid_reconstructions).cpu().data.numpy())
 
         Xbar = np.array(lz).reshape([-1,dim1,dim2])
 
@@ -451,8 +456,8 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None):
     
     return (X0, Xbar, np.mean(X0, axis=(1,2)))
 
-def estimate_error(model, Zif, zmin, zmax, num_channels):
-    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels)
+def estimate_error(model, Zif, zmin, zmax, num_channels, modelname):
+    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname)
 
     rmse_list = list()
     abs_list = list()
@@ -656,7 +661,6 @@ class Encoder(nn.Module):
                                              num_residual_hiddens=num_residual_hiddens)
 
     def forward(self, inputs):
-        # import pdb; pdb.set_trace()
         # (2020/11) Testing with resize
         x = inputs
         if self._rescale is not None:
@@ -708,7 +712,6 @@ class Decoder(nn.Module):
                                                 kernel_size=3, stride=2, padding=1, output_padding=1)
 
     def forward(self, inputs):
-        # import pdb; pdb.set_trace()
         x = inputs
         x = self._conv_1(x)
         
@@ -914,6 +917,54 @@ def save_checkpoint(DIR, prefix, model, err, epoch, dmodel=None):
         f.write(str(epoch))
     log ("Saved checkpoint: %s"%(fname))
 
+class VAE(nn.Module):
+    def __init__(self, nc, nx, ny, nh, nz):
+        super(VAE, self).__init__()
+
+        self.nc = nc
+        self.nx = nx
+        self.ny = ny
+        self.nh = nh
+        self.nz = nz
+        info ("VAE (nc,nx,ny,nh,nz):", nc, nx, ny, nh, nz)
+
+        self.fc1 = nn.Linear(self.nx*self.ny, self.nh)
+        self.fc21 = nn.Linear(self.nh, self.nz)
+        self.fc22 = nn.Linear(self.nh, self.nz)
+        self.fc3 = nn.Linear(self.nz, self.nh)
+        self.fc4 = nn.Linear(self.nh, self.nx*self.ny)
+
+    def encode(self, x):
+        x = F.relu(self.fc1(x))
+        return self.fc21(x), self.fc22(x)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def decode(self, z):
+        x = F.relu(self.fc3(z))
+        x = torch.sigmoid(self.fc4(x))
+        return x
+
+    def forward(self, x):
+        mu, logvar = self.encode(x.view(-1, self.nx*self.ny))
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
+
+    # Reconstruction + KL divergence losses summed over all elements and batch
+    def loss_function(self, recon_x, x, mu, logvar):
+        BCE = F.binary_cross_entropy(recon_x, x.view(-1, self.nx*self.ny), reduction='sum')
+
+        # see Appendix B from VAE paper:
+        # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
+        # https://arxiv.org/abs/1312.6114
+        # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+        return BCE + KLD
+
 def main():
     global device
     global xgcexp
@@ -973,6 +1024,10 @@ def main():
     group2.add_argument('--offset', help='offset', type=int, default=159065)
     group2.add_argument('--nframes', help='nframes', type=int, default=16_384)
 
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--vae', help='vqvae model', action='store_const', dest='model', const='vae')
+    group.add_argument('--vqvae', help='vae model', action='store_const', dest='model', const='vqvae')
+    parser.set_defaults(model='vqvae')
     args = parser.parse_args()
 
     DIR=args.wdir
@@ -1148,15 +1203,24 @@ def main():
 
     # %% 
     # Model
-    if args.learndiff:
-        model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
-                    num_embeddings, embedding_dim, 
-                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    input_shape=[batch_size, num_channels, Zif.shape[-2], Zif.shape[-1]]).to(device)
-    else:
+    # if args.learndiff:
+    #     model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+    #                 num_embeddings, embedding_dim, 
+    #                 commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
+    #                 input_shape=[batch_size, num_channels, Zif.shape[-2], Zif.shape[-1]]).to(device)
+    # else:
+    #     model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+    #                 num_embeddings, embedding_dim, 
+    #                 commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
+    
+    if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
+
+    if args.model == 'vae':
+        _, ny, nx = Z0.shape
+        model = VAE(args.num_channels, nx, ny, nx*ny//10, nx*ny//10//8).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -1207,18 +1271,27 @@ def main():
 
         optimizer.zero_grad() # clear previous gradients
         
-        vq_loss, data_recon, perplexity, dloss = model(data+ns)
-        ## mean squared error: torch.mean((data_recon - data)**2)
-        ## relative variance
-        recon_error = F.mse_loss(data_recon, data) / data_variance
-        physics_error = 0.0
-        if args.physicsloss and (i % args.physicsloss_interval == 0):
-            den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
-            ds = np.mean(data_recon.cpu().data.numpy()**2)
-            # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
-            # physics_error += den_err/ds * torch.mean(data_recon)
-            physics_error += den_err
-        loss = recon_error + vq_loss + physics_error + dloss
+        if args.model == 'vqvae':
+            vq_loss, data_recon, perplexity, dloss = model(data+ns)
+            ## mean squared error: torch.mean((data_recon - data)**2)
+            ## relative variance
+            recon_error = F.mse_loss(data_recon, data) / data_variance
+            physics_error = 0.0
+            if args.physicsloss and (i % args.physicsloss_interval == 0):
+                den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
+                ds = np.mean(data_recon.cpu().data.numpy()**2)
+                # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+                # physics_error += den_err/ds * torch.mean(data_recon)
+                physics_error += den_err
+            loss = recon_error + vq_loss + physics_error + dloss
+
+        if args.model == 'vae':
+            recon_batch, mu, logvar = model(data)
+            loss = model.loss_function(recon_batch, data, mu, logvar)
+            recon_error = F.mse_loss(recon_batch, data.view(-1, 80*64)) / data_variance
+            perplexity = torch.tensor(0)
+            physics_error = 0.0
+
         loss.backward()
 
         if args.learndiff2:
@@ -1243,7 +1316,7 @@ def main():
         train_res_physics_error.append(physics_error)
 
         if args.resampling and (i % resampling_interval == 0):
-            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels)
+            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
             err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
             lxx = [ lx[i] for i in idx ]
@@ -1256,12 +1329,17 @@ def main():
         if i % args.log_interval == 0:
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
-            logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
-            if args.learndiff2:
-                logging.info(f'{i} dloss: {dloss.item():g}')
-            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels)
-            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
+            if args.model == 'vqvae':
+                logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
+                
+                if args.learndiff2:
+                    logging.info(f'{i} dloss: {dloss.item():g}')
+                rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
+                logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
         
+            if args.model == 'vae':
+                logging.info(f'{i} Loss: {recon_error.item():g}')
+
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
     istart=istart+num_training_updates
@@ -1272,20 +1350,32 @@ def main():
         (valid_originals, valid_labels) = next(iter(validation_loader))
         valid_originals = valid_originals.to(device)
 
-        vq_encoded = model._encoder(valid_originals)
-        vq_output_eval = model._pre_vq_conv(vq_encoded)
-        _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
-        valid_reconstructions = model._decoder(valid_quantize)
+        if args.model == 'vqvae':
+            vq_encoded = model._encoder(valid_originals)
+            vq_output_eval = model._pre_vq_conv(vq_encoded)
+            _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+            valid_reconstructions = model._decoder(valid_quantize)
 
-        logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
-        logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
-        logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
-        logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
-        logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
-        logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
+            logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
+            logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
+            logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
+            logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
+            logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
+            logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
+
+        if args.model == 'vae':
+            valid_reconstructions, mu, logvar = model(valid_originals)
+
+            logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
+            # logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
+            # logging.info ('Quantized: %s' % (valid_quantize.detach().cpu().numpy().shape,))
+            logging.info ('Reconstructed: %s' % (valid_reconstructions.detach().cpu().numpy().shape,))
+            logging.info ('compression ratio: %.2fx'%(model.nx*model.ny/model.nz))
+            # logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
+            # logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
         logging.info ('Reconstructing ...')
-        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel)
+        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model)
         log (Zif.shape, Xbar.shape)
 
         rmse_list = list()
