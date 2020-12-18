@@ -68,6 +68,9 @@ def debug(*args, logtype='debug', sep=' '):
 
 # %%
 def init(counter):
+    """
+    Init processes for ProcessPoolExecutor
+    """
     global args
     global pidmap
     global comm, size, rank
@@ -93,10 +96,15 @@ def init(counter):
 
 # %%
 def dowork(X, inode, num_channels):
+    """
+    Process work for ProcessPoolExecutor
+    """
     global xgcexp
+    global args
     global Z0, zmu, zsig, zmin, zmax
 
-    nnodes = len(Z0)//xgcexp.nphi
+    # hard coding inode: 100_000_000+iphi + inode
+    nnodes = 100_000_000
     nvp0 = xgcexp.f0mesh.f0_nmu+1
     nvp1 = xgcexp.f0mesh.f0_nvp*2+1
 
@@ -125,13 +133,17 @@ def dowork(X, inode, num_channels):
     # print ("dowork done:", inode, os.getpid())
     return (_den_err, _u_para_err, _T_perp_err, _T_para_err)
 
-def physics_loss_con(data, lb, data_recon, executor=None):
+def physics_loss_con(data, lb, data_recon, executor, progress=False):
+    """
+    Calculate phyiscs loss in parallel by using ProcessPoolExecutor
+    """
     global args
     global xgcexp
     global Z0, zmu, zsig, zmin, zmax
 
     batch_size, num_channels = data.shape[:2]
-    nnodes = len(Z0)//xgcexp.nphi
+    # hard coding inode: 100_000_000+iphi + inode
+    # nnodes = len(Z0)//xgcexp.nphi
     nvp0 = xgcexp.f0mesh.f0_nmu+1
     nvp1 = xgcexp.f0mesh.f0_nvp*2+1
 
@@ -147,9 +159,9 @@ def physics_loss_con(data, lb, data_recon, executor=None):
     if executor is not None:
         futures = list()
         for i in range(batch_size):
-            futures.append(executor.submit(dowork, Xbar[i,:num_channels,:nvp0,:nvp1], int(lb[i]), num_channels))
+            futures.append(executor.submit(dowork, Xbar[i,:num_channels,:nvp0,:nvp1], int(lb[i])-args.inode, num_channels))
 
-        for f in tqdm(futures):
+        for f in tqdm(futures, disable=not progress):
             _den_err, _u_para_err, _T_perp_err, _T_para_err = f.result()
             #_den_err, _u_para_err, _T_perp_err, _T_para_err = dowork(i)
             den_err += _den_err
@@ -179,16 +191,21 @@ def physics_loss_con(data, lb, data_recon, executor=None):
         # T_perp_err += np.mean((T_perp0-T_perp1)**2)/np.var(T_perp0)
         # T_para_err += np.mean((T_para0-T_para1)**2)/np.var(T_para0)
 
-        return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
+        return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
-def physics_loss(data, lb, data_recon):
+def physics_loss(data, lb, data_recon, progress=False):
+    """
+    Calculate phyiscs loss
+    """
     global device
     global xgcexp
+    global args
     global Z0, zmu, zsig, zmin, zmax
 
     batch_size, num_channels = data.shape[:2]
-    nnodes = len(Z0)//xgcexp.nphi
+    # hard coding inode: 100_000_000+iphi + inode
+    nnodes = 100_000_000
     nvp0 = xgcexp.f0mesh.f0_nmu+1
     nvp1 = xgcexp.f0mesh.f0_nvp*2+1
 
@@ -199,8 +216,8 @@ def physics_loss(data, lb, data_recon):
     T_perp_err = 0.
     T_para_err = 0.
     
-    for i in tqdm(range(batch_size)):
-        inode = int(lb[i])
+    for i in tqdm(range(batch_size), disable=not progress):
+        inode = int(lb[i]) - args.inode
         mn = zmin[inode:inode+num_channels]
         mx = zmax[inode:inode+num_channels]
 
@@ -222,10 +239,13 @@ def physics_loss(data, lb, data_recon):
         T_perp_err += np.mean((T_perp0-T_perp1)**2)/np.var(T_perp0)
         T_para_err += np.mean((T_para0-T_para1)**2)/np.var(T_para0)
 
-    return (den_err/batch_size, u_para_err/batch_size, T_perp_err/batch_size, T_para_err/batch_size)
+    return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
 def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16, fieldline=False):
+    """
+    Read XGC f0 data
+    """
     def adios2_get_shape(f, varname):
         nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
         shape = f.available_variables()[varname]['Shape']
@@ -364,6 +384,9 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
 
 # %%
 def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomread=0.0, nchunk=16):
+    """
+    Read NSTX data
+    """
     start = offset
     count = nframes - nframes%nchunk
     logging.info (f"Reading: nstx_data_ornl_demo_v2.bp {start} {count}")
@@ -384,8 +407,10 @@ def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomre
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
-""" Gradient averaging. """
 def average_gradients(model):
+    """
+    Gradient averaging
+    """
     try:
         MPI
     except NameError:
@@ -394,7 +419,6 @@ def average_gradients(model):
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
-    #import pdb; pdb.set_trace()
     for i, (name, param) in enumerate(model.named_parameters()):
         if param.grad is not None:
             #print ('[%d] %d: %s (b): %f '%(rank, i, name, param.grad.data.sum()))
@@ -409,6 +433,9 @@ def average_gradients(model):
 
 # %%
 def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae'):
+    """
+    Reconstructing data based on a trained model
+    """
     mode = model.training
     model.eval()
     with torch.no_grad():
@@ -457,6 +484,9 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     return (X0, Xbar, np.mean(X0, axis=(1,2)))
 
 def estimate_error(model, Zif, zmin, zmax, num_channels, modelname):
+    """
+    Error calculation
+    """
     X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname)
 
     rmse_list = list()
@@ -727,60 +757,6 @@ class Decoder(nn.Module):
         return x
 
 # %%
-"""
-Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
-"""
-class AE(nn.Module):
-    def __init__(self, **kwargs):
-        super().__init__()
-        self.encoder_hidden_layer = nn.Linear(
-            in_features=kwargs["input_shape"], out_features=128
-        )
-        self.encoder_output_layer = nn.Linear(
-            in_features=128, out_features=128
-        )
-        self.decoder_hidden_layer = nn.Linear(
-            in_features=128, out_features=128
-        )
-        self.decoder_output_layer = nn.Linear(
-            in_features=128, out_features=kwargs["input_shape"]
-        )
-
-    def forward(self, features):
-        activation = self.encoder_hidden_layer(features)
-        activation = torch.tanh(activation)
-        code = self.encoder_output_layer(activation)
-        code = torch.tanh(code)
-        activation = self.decoder_hidden_layer(code)
-        activation = torch.tanh(activation)
-        activation = self.decoder_output_layer(activation)
-        reconstructed = torch.tanh(activation)
-        return reconstructed
-
-# %%
-"""
-Credit: https://medium.com/@vaibhaw.vipul/building-autoencoder-in-pytorch-34052d1d280c
-"""
-class Autoencoder(nn.Module):
-    def __init__(self):
-        super(Autoencoder,self).__init__()
-        
-        self.encoder = nn.Sequential(
-            nn.Conv2d(3, 6, kernel_size=5),
-            nn.ReLU(True),
-            nn.Conv2d(6,16,kernel_size=5),
-            nn.ReLU(True))
-        self.decoder = nn.Sequential(             
-            nn.ConvTranspose2d(16,6,kernel_size=5),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(6,3,kernel_size=5),
-            nn.ReLU(True))
-    def forward(self,x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-
-# %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None):
@@ -945,6 +921,9 @@ class ResidualLinearStack(nn.Module):
             x = self._layers[i](x)
         return F.relu(x)
 
+"""
+Credit: https://github.com/pytorch/examples/tree/master/vae
+"""
 class VAE(nn.Module):
     def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers):
         super(VAE, self).__init__()
@@ -1004,6 +983,60 @@ class VAE(nn.Module):
 
         return BCE + KLD
 
+# %%
+"""
+Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
+"""
+class AE(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.encoder_hidden_layer = nn.Linear(
+            in_features=kwargs["input_shape"], out_features=128
+        )
+        self.encoder_output_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_hidden_layer = nn.Linear(
+            in_features=128, out_features=128
+        )
+        self.decoder_output_layer = nn.Linear(
+            in_features=128, out_features=kwargs["input_shape"]
+        )
+
+    def forward(self, features):
+        activation = self.encoder_hidden_layer(features)
+        activation = torch.tanh(activation)
+        code = self.encoder_output_layer(activation)
+        code = torch.tanh(code)
+        activation = self.decoder_hidden_layer(code)
+        activation = torch.tanh(activation)
+        activation = self.decoder_output_layer(activation)
+        reconstructed = torch.tanh(activation)
+        return reconstructed
+
+# %%
+"""
+Credit: https://medium.com/@vaibhaw.vipul/building-autoencoder-in-pytorch-34052d1d280c
+"""
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder,self).__init__()
+        
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 6, kernel_size=5),
+            nn.ReLU(True),
+            nn.Conv2d(6,16,kernel_size=5),
+            nn.ReLU(True))
+        self.decoder = nn.Sequential(             
+            nn.ConvTranspose2d(16,6,kernel_size=5),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(6,3,kernel_size=5),
+            nn.ReLU(True))
+    def forward(self,x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
 def main():
     global device
     global xgcexp
@@ -1049,7 +1082,7 @@ def main():
     group1.add_argument('--physicsloss', help='physicsloss', action='store_true')
     group1.add_argument('--physicsloss_interval', help='physicsloss_interval (default: %(default)s)', type=int, default=1)
     group1.add_argument('--randomread', help='randomread', type=float, default=0.0)
-    group1.add_argument('--iphi', help='iphi', type=int)
+    group1.add_argument('--iphi', help='iphi', type=int, default=None)
     group1.add_argument('--splitfiles', help='splitfiles', action='store_true')
     group1.add_argument('--overwrap', help='overwrap', type=int, default=1)
     group1.add_argument('--inode', help='inode', type=int, default=0)
@@ -1319,10 +1352,11 @@ def main():
             physics_error = 0.0
             if args.physicsloss and (i % args.physicsloss_interval == 0):
                 den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
+                # den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
                 ds = np.mean(data_recon.cpu().data.numpy()**2)
-                # print (lb[0], recon_error.data, vq_loss.data, den_err, u_para_err, T_perp_err, T_para_err, ds)
+                print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err, ds)
                 # physics_error += den_err/ds * torch.mean(data_recon)
-                physics_error += den_err
+                physics_error += den_err + u_para_err + T_perp_err + T_para_err
             loss = recon_error + vq_loss + physics_error + dloss
 
         if args.model == 'vae':
