@@ -1354,7 +1354,8 @@ def main():
                 den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
                 # den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
                 ds = np.mean(data_recon.cpu().data.numpy()**2)
-                print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err, ds)
+                if i % args.log_interval == 0:
+                    print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err, ds)
                 # physics_error += den_err/ds * torch.mean(data_recon)
                 physics_error += den_err + u_para_err + T_perp_err + T_para_err
             loss = recon_error + vq_loss + physics_error + dloss
