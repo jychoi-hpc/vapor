@@ -343,7 +343,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
             ndim = len(nsize)
             nphi = nsize[0] if iphi is None else 1
             iphi = 0 if iphi is None else iphi
-            _nnodes = nsize[2] if nnodes is None else nnodes
+            _nnodes = nsize[2]-inode if nnodes is None else nnodes
             nmu = nsize[1]
             nvp = nsize[3]
             start = (iphi,0,inode,0)
@@ -1206,7 +1206,7 @@ def main():
     info ('Dataset:', args.dataset)
     if args.dataset == 'xgc':
         xgcexp = xgc4py.XGC(args.datadir)
-        nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
+        #nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
         
         timesteps = args.timesteps
         if args.splitfiles:
@@ -1215,7 +1215,7 @@ def main():
         logging.info (f'Data dir: {args.datadir}')
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
-            f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=nnodes, \
+            f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                 randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
 
         lst = list(zip(*f0_data_list))
