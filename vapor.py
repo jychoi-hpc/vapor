@@ -755,7 +755,7 @@ class Decoder(nn.Module):
         x = F.relu(x)
 
         x = self._conv_trans_3(x)
-        x = torch.sigmoid(x)
+        #x = torch.sigmoid(x)
         return x
 
 # %%
