@@ -119,6 +119,7 @@ def dowork(X, inode, num_channels):
     den0, u_para0, T_perp0, T_para0, _, _ = \
         xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
 
+    ## Unnormalizing
     f0_f = X
     f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
     f0_f += mn[:,np.newaxis,np.newaxis]
@@ -754,6 +755,7 @@ class Decoder(nn.Module):
         x = F.relu(x)
 
         x = self._conv_trans_3(x)
+        x = torch.sigmoid(x)
         return x
 
 # %%
@@ -1328,7 +1330,7 @@ def main():
     counter = mp.Value('i', 0)
     executor = ProcessPoolExecutor(max_workers=nworkers, initializer=init, initargs=(counter,))
     num_training_updates = args.num_training_updates
-    resampling_interval = len(lx)//batch_size if args.resampling_interval is None else args.resampling_interval
+    resampling_interval = len(lx)//batch_size*10 if args.resampling_interval is None else args.resampling_interval
     logging.info (f'Rsampling, resampling interval: {args.resampling} {resampling_interval}')
     total_trained = np.ones(len(lx), dtype=np.int)
     logging.info ('Training: %d' % num_training_updates)
