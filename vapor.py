@@ -213,11 +213,12 @@ def physics_loss(data, lb, data_recon, progress=False):
 
     # Xbar = data_recon.cpu().data.numpy() ## shape: (nbatch, nchannel, nvp0, nvp1)
     Xbar = data_recon
+    device = data_recon.device
     
-    den_err = torch.tensor(0.)
-    u_para_err = torch.tensor(0.)
-    T_perp_err = torch.tensor(0.)
-    T_para_err = torch.tensor(0.)
+    den_err = torch.tensor(0.).to(device)
+    u_para_err = torch.tensor(0.).to(device)
+    T_perp_err = torch.tensor(0.).to(device)
+    T_para_err = torch.tensor(0.).to(device)
     
     for i in tqdm(range(batch_size), disable=not progress):
         inode = int(lb[i]) - args.inode
@@ -1355,7 +1356,7 @@ def main():
             ## mean squared error: torch.mean((data_recon - data)**2)
             ## relative variance
             recon_error = F.mse_loss(data_recon, data) / data_variance
-            physics_error = torch.tensor(0.0)
+            physics_error = torch.tensor(0.0).to(data_recon.device)
             if args.physicsloss and (i % args.physicsloss_interval == 0):
                 # den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
                 den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
