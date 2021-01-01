@@ -30,6 +30,7 @@ import random
 
 # %%
 import torch
+torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -210,12 +211,13 @@ def physics_loss(data, lb, data_recon, progress=False):
     nvp0 = xgcexp.f0mesh.f0_nmu+1
     nvp1 = xgcexp.f0mesh.f0_nvp*2+1
 
-    Xbar = data_recon.cpu().data.numpy() ## shape: (nbatch, nchannel, nvp0, nvp1)
+    # Xbar = data_recon.cpu().data.numpy() ## shape: (nbatch, nchannel, nvp0, nvp1)
+    Xbar = data_recon
     
-    den_err = 0.
-    u_para_err = 0.
-    T_perp_err = 0.
-    T_para_err = 0.
+    den_err = torch.tensor(0.)
+    u_para_err = torch.tensor(0.)
+    T_perp_err = torch.tensor(0.)
+    T_para_err = torch.tensor(0.)
     
     for i in tqdm(range(batch_size), disable=not progress):
         inode = int(lb[i]) - args.inode
@@ -223,22 +225,23 @@ def physics_loss(data, lb, data_recon, progress=False):
         mx = zmax[inode:inode+num_channels]
 
         #f0_f = data[i].cpu().data.numpy()
-        f0_f = Z0[inode:inode+num_channels,:nvp0,:nvp1]
+        f0_f = torch.from_numpy(Z0[inode:inode+num_channels,:nvp0,:nvp1]).to(device)
         #f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
         #f0_f += mn[:,np.newaxis,np.newaxis]
         den0, u_para0, T_perp0, T_para0, _, _ = \
-            xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+            xgcexp.f0_diag_torch(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
 
-        f0_f = Xbar[i,:num_channels,:nvp0,:nvp1]
-        f0_f *= (mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis])
-        f0_f += mn[:,np.newaxis,np.newaxis]
+        ## Re-scale first
+        f0_f1 = Xbar[i,:num_channels,:nvp0,:nvp1]
+        f0_f2 = f0_f1 * torch.from_numpy(mx[:,np.newaxis,np.newaxis]-mn[:,np.newaxis,np.newaxis]).to(device)
+        f0_f = f0_f2 + torch.from_numpy(mn[:,np.newaxis,np.newaxis]).to(device)
         den1, u_para1, T_perp1, T_para1, _, _ = \
-            xgcexp.f0_diag(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
+            xgcexp.f0_diag_torch(f0_inode1=inode%nnodes, ndata=num_channels, isp=1, f0_f=f0_f, progress=False)
         
-        den_err += np.mean((den0-den1)**2)/np.var(den0)
-        u_para_err += np.mean((u_para0-u_para1)**2)/np.var(u_para0)
-        T_perp_err += np.mean((T_perp0-T_perp1)**2)/np.var(T_perp0)
-        T_para_err += np.mean((T_para0-T_para1)**2)/np.var(T_para0)
+        den_err += torch.mean((den0-den1)**2)/torch.var(den0)
+        u_para_err += torch.mean((u_para0-u_para1)**2)/torch.var(u_para0)
+        T_perp_err += torch.mean((T_perp0-T_perp1)**2)/torch.var(T_perp0)
+        T_para_err += torch.mean((T_para0-T_para1)**2)/torch.var(T_para0)
 
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
@@ -1207,7 +1210,8 @@ def main():
     global Z0, zmu, zsig, zmin, zmax, zlb
     info ('Dataset:', args.dataset)
     if args.dataset == 'xgc':
-        xgcexp = xgc4py.XGC(args.datadir)
+        ## (2020/12) single timestep. temporary.
+        xgcexp = xgc4py.XGC(args.datadir, step=args.timesteps[0], device=device)
         #nnodes = xgcexp.mesh.nnodes if args.nnodes is None else args.nnodes
         
         timesteps = args.timesteps
@@ -1351,13 +1355,13 @@ def main():
             ## mean squared error: torch.mean((data_recon - data)**2)
             ## relative variance
             recon_error = F.mse_loss(data_recon, data) / data_variance
-            physics_error = 0.0
+            physics_error = torch.tensor(0.0)
             if args.physicsloss and (i % args.physicsloss_interval == 0):
-                den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
-                # den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
-                ds = np.mean(data_recon.cpu().data.numpy()**2)
+                # den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
+                den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
+                # ds = torch.mean(data_recon.cpu().data.numpy()**2)
                 if i % args.log_interval == 0:
-                    print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err, ds)
+                    print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err)
                 # physics_error += den_err/ds * torch.mean(data_recon)
                 physics_error += den_err + u_para_err + T_perp_err + T_para_err
             loss = recon_error + vq_loss + physics_error + dloss
@@ -1367,7 +1371,7 @@ def main():
             loss = model.loss_function(recon_batch, data, mu, logvar)
             recon_error = F.mse_loss(recon_batch, data.view(-1, nx*ny)) / data_variance
             perplexity = torch.tensor(0)
-            physics_error = 0.0
+            physics_error = torch.tensor(0.0)
 
         loss.backward()
 
@@ -1390,7 +1394,7 @@ def main():
         
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
-        train_res_physics_error.append(physics_error)
+        train_res_physics_error.append(physics_error.item())
 
         if args.resampling and (i % resampling_interval == 0):
             err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
