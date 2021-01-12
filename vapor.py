@@ -49,6 +49,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import hashlib
+
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 xgcexp = None
@@ -66,6 +68,31 @@ def info(*args, logtype='info', sep=' '):
 
 def debug(*args, logtype='debug', sep=' '):
     getattr(logging, logtype)(sep.join(map(str, args)))
+
+# %%
+def conv_hash(X):
+    d1, d2 = X.shape
+    digest_size = hashlib.sha3_512().digest_size
+
+    ds = list()
+    msg = X.tobytes()
+    for i in range(d1*d2//digest_size+1):
+        f = hashlib.sha3_512()
+        f.update(msg)
+        msg = f.digest()
+        ds.extend([float(d)/255.0 for d in msg])
+    ds = ds[:d1*d2]
+    return np.array(ds).reshape([d1,d2])
+
+def conv_hash_torch(X):
+        Y = torch.zeros_like(X)
+        b, c, d1, d2 = Y.shape
+        for i in range(b):
+            for j in range(c):
+                _X = X[i,j,:].numpy()
+                _Y = conv_hash(_X)
+                Y[i,j,:] = torch.Tensor(_Y)
+        return Y
 
 # %%
 def init(counter):
@@ -765,7 +792,7 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False):
         super(Model, self).__init__()
         
         self._encoder = Encoder(num_channels, num_hiddens,
@@ -818,7 +845,14 @@ class Model(nn.Module):
             #self._doptimizer = optim.Adam(self._dmodel.parameters(), lr=1e-3)
             self._dcriterion = nn.MSELoss()
         
+        self._shaconv = shaconv
+        
     def forward(self, x):
+
+        ## sha conv
+        if self._shaconv:
+            x = conv_hash_torch(x)
+        
         #import pdb; pdb.set_trace()
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
@@ -845,9 +879,6 @@ class Model(nn.Module):
 
 # %%
 def load_checkpoint(DIR, prefix, model):
-    import hashlib
-    import sys
-
     ## (2020/06) no use anymore
     # hcode = hashlib.md5(str(model).encode()).hexdigest()
     # print ('hash:', hcode)
@@ -879,9 +910,6 @@ def load_checkpoint(DIR, prefix, model):
 
 # %%
 def save_checkpoint(DIR, prefix, model, err, epoch, dmodel=None):
-    import hashlib
-    from pathlib import Path
-
     ## (2020/06) no use anymore
     # hcode = hashlib.md5(str(model).encode()).hexdigest()
     _prefix = '%s/%s'%(DIR, prefix)
@@ -1078,6 +1106,7 @@ def main():
     parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--learning_rate', help='learning_rate', type=float, default=1e-3)
+    parser.add_argument('--shaconv', help='shaconv', action='store_true')
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -1296,7 +1325,7 @@ def main():
     if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
-                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
