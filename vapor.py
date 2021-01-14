@@ -484,7 +484,11 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
             _, nchannel, dim1, dim2 = valid_originals.shape
-            if modelname == 'vqvae':
+            if modelname == 'vae':
+                valid_reconstructions, mu, logvar = model(valid_originals)
+                valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
+                lz.append((valid_reconstructions).cpu().data.numpy())
+            else:
                 vq_encoded = model._encoder(valid_originals)
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
@@ -496,11 +500,6 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                     dx = (valid_originals-valid_reconstructions).view(-1, nchannel*dim1*dim2)
                     drecon = dmodel(dx).view(-1, nchannel, dim1, dim2)
                 lz.append((valid_reconstructions+drecon).cpu().data.numpy())
-
-            if modelname == 'vae':
-                valid_reconstructions, mu, logvar = model(valid_originals)
-                valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
-                lz.append((valid_reconstructions).cpu().data.numpy())
 
         Xbar = np.array(lz).reshape([-1,dim1,dim2])
 
@@ -1081,11 +1080,11 @@ class Autoencoder(nn.Module):
 Credit: https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/gan/gan.py
 """
 class Discriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, nc, nx, ny):
         super(Discriminator, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(int(np.prod(img_shape)), 512),
+            nn.Linear(int(np.prod([nc, nx, ny])), 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 256),
             nn.LeakyReLU(0.2, inplace=True),
@@ -1163,6 +1162,7 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--vae', help='vqvae model', action='store_const', dest='model', const='vae')
     group.add_argument('--vqvae', help='vae model', action='store_const', dest='model', const='vqvae')
+    group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     parser.set_defaults(model='vqvae')
     args = parser.parse_args()
 
@@ -1358,6 +1358,15 @@ def main():
     if args.model == 'vae':
         _, ny, nx = Z0.shape
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
+    
+    if args.model == 'gan':
+        model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+                    num_embeddings, embedding_dim, 
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
+        _, ny, nx = Z0.shape
+        discriminator = Discriminator(args.num_channels, nx, ny)
+        adversarial_loss = torch.nn.BCELoss()
+        optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -1423,6 +1432,12 @@ def main():
                 # physics_error += den_err/ds * torch.mean(data_recon)
                 physics_error += den_err + u_para_err + T_perp_err + T_para_err
             loss = recon_error + vq_loss + physics_error + dloss
+            loss.backward()
+            if (args.average_interval is not None) and (i%args.average_interval == 0):
+                ## Gradient averaging
+                logging.info('iteration %d: gradient averaging' % (i))
+                average_gradients(model)
+            optimizer.step()
 
         if args.model == 'vae':
             recon_batch, mu, logvar = model(data)
@@ -1430,23 +1445,35 @@ def main():
             recon_error = F.mse_loss(recon_batch, data.view(-1, nx*ny)) / data_variance
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
+            loss.backward()
+            optimizer.step()
 
-        loss.backward()
+        if args.model == 'gan':
+            valid = torch.ones(args.batch_size, 1, requires_grad=False).to(device)
+            fake = torch.zeros(args.batch_size, 1, requires_grad=False).to(device)
+            z = torch.Tensor(np.random.normal(0, 1, data.shape))
 
-        if args.learndiff2:
-            doptimizer.zero_grad() # clear previous gradients
-            dim1, dim2 = Zif.shape[-2], Zif.shape[-1]
-            dx = (data-data_recon).view(-1,num_channels*dim1*dim2).detach()
-            drecon = dmodel(dx)
-            dloss = dcriterion(drecon, dx)
-            dloss.backward()
-            doptimizer.step()
+            # vq_loss, data_recon, perplexity, dloss = model(data+ns)
+            vq_loss, data_recon, perplexity, dloss = model(z)
+            recon_error = F.mse_loss(data_recon, data) / data_variance
+            physics_error = torch.tensor(0.0).to(data_recon.device)
+            loss = recon_error + vq_loss + physics_error + dloss
 
-        if (args.average_interval is not None) and (i%args.average_interval == 0):
-            ## Gradient averaging
-            logging.info('iteration %d: gradient averaging' % (i))
-            average_gradients(model)
-        optimizer.step()
+            loss = adversarial_loss(discriminator(data_recon), valid)
+            loss.backward()
+            optimizer.step()
+
+            #  Train Discriminator
+            optimizer_D.zero_grad()
+            real_loss = adversarial_loss(discriminator(data), valid)
+            fake_loss = adversarial_loss(discriminator(data_recon.detach()), fake)
+            d_loss = (real_loss + fake_loss) / 2
+
+            d_loss.backward()
+            optimizer_D.step()
+
+            if i % args.log_interval == 0:
+                print("[G loss: %f] [D loss: %f]"% (loss.item(), d_loss.item()))
 
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
