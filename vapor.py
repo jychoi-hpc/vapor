@@ -1462,7 +1462,7 @@ def main():
 
             d = discriminator(data_recon)
             loss = loss + adversarial_loss(d, valid)
-            print (d, loss.item())
+            #print (d, loss.item())
             loss.backward()
             optimizer.step()
 
@@ -1472,11 +1472,12 @@ def main():
             fake_loss = adversarial_loss(discriminator(data_recon.detach()), fake)
             d_loss = (real_loss + fake_loss) / 2
 
+            if i % args.log_interval == 0:
+                print("[G loss: %f] [D loss: %f]"% (loss.item(), d_loss.item()))
+
             d_loss.backward()
             optimizer_D.step()
 
-            if i % args.log_interval == 0:
-                print("[G loss: %f] [D loss: %f]"% (loss.item(), d_loss.item()))
 
         #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
