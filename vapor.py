@@ -1455,12 +1455,14 @@ def main():
             z = torch.Tensor(np.random.normal(0, 1, data.shape)).to(device)
 
             # vq_loss, data_recon, perplexity, dloss = model(data+ns)
-            vq_loss, data_recon, perplexity, dloss = model(z)
+            vq_loss, data_recon, perplexity, dloss = model(data+ns)
             recon_error = F.mse_loss(data_recon, data) / data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
-            #loss = recon_error + vq_loss + physics_error + dloss
+            loss = recon_error + vq_loss + physics_error + dloss
 
-            loss = adversarial_loss(discriminator(data_recon), valid)
+            d = discriminator(data_recon)
+            loss = loss + adversarial_loss(d, valid)
+            print (d, loss.item())
             loss.backward()
             optimizer.step()
 
