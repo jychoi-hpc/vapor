@@ -848,7 +848,6 @@ class Model(nn.Module):
         self._shaconv = shaconv
         
     def forward(self, x):
-
         ## sha conv
         if self._shaconv:
             x = conv_hash_torch(x)
@@ -959,7 +958,7 @@ class ResidualLinearStack(nn.Module):
 Credit: https://github.com/pytorch/examples/tree/master/vae
 """
 class VAE(nn.Module):
-    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers):
+    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers, shaconv=False):
         super(VAE, self).__init__()
 
         self.nc = nc
@@ -981,6 +980,8 @@ class VAE(nn.Module):
                                     num_hiddens=self.nh,
                                     num_residual_layers=num_residual_layers,
                                     num_residual_hiddens=num_residual_hiddens)
+        
+        self._shaconv = shaconv
 
     def encode(self, x):
         x = F.relu(self.fc1(x))
@@ -1001,6 +1002,10 @@ class VAE(nn.Module):
         return x
 
     def forward(self, x):
+        ## sha conv
+        if self._shaconv:
+            x = conv_hash_torch(x)
+
         mu, logvar = self.encode(x.view(-1, self.nx*self.ny))
         z = self.reparameterize(mu, logvar)
         return self.decode(z), mu, logvar
@@ -1070,6 +1075,29 @@ class Autoencoder(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
+
+# %%
+"""
+Credit: https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/gan/gan.py
+"""
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(int(np.prod(img_shape)), 512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(512, 256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(256, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, img):
+        img_flat = img.view(img.size(0), -1)
+        validity = self.model(img_flat)
+
+        return validity
 
 def main():
     global device
@@ -1329,7 +1357,7 @@ def main():
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
-        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers).to(device)
+        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
