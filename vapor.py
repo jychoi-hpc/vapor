@@ -89,9 +89,9 @@ def conv_hash_torch(X):
         b, c, d1, d2 = Y.shape
         for i in range(b):
             for j in range(c):
-                _X = X[i,j,:].numpy()
+                _X = X[i,j,:].cpu().numpy()
                 _Y = conv_hash(_X)
-                Y[i,j,:] = torch.Tensor(_Y)
+                Y[i,j,:] = torch.Tensor(_Y).to(X.device)
         return Y
 
 # %%
@@ -1364,9 +1364,10 @@ def main():
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
         _, ny, nx = Z0.shape
-        discriminator = Discriminator(args.num_channels, nx, ny)
-        adversarial_loss = torch.nn.BCELoss()
+        discriminator = Discriminator(args.num_channels, nx, ny).to(device)
+        adversarial_loss = torch.nn.BCELoss().to(device)
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
+
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -1451,13 +1452,13 @@ def main():
         if args.model == 'gan':
             valid = torch.ones(args.batch_size, 1, requires_grad=False).to(device)
             fake = torch.zeros(args.batch_size, 1, requires_grad=False).to(device)
-            z = torch.Tensor(np.random.normal(0, 1, data.shape))
+            z = torch.Tensor(np.random.normal(0, 1, data.shape)).to(device)
 
             # vq_loss, data_recon, perplexity, dloss = model(data+ns)
             vq_loss, data_recon, perplexity, dloss = model(z)
             recon_error = F.mse_loss(data_recon, data) / data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
-            loss = recon_error + vq_loss + physics_error + dloss
+            #loss = recon_error + vq_loss + physics_error + dloss
 
             loss = adversarial_loss(discriminator(data_recon), valid)
             loss.backward()
