@@ -1501,8 +1501,6 @@ def main():
                 
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
-                rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
-                logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
         
             if args.model == 'vae':
                 logging.info(f'{i} Loss: {recon_error.item():g}')
@@ -1510,8 +1508,9 @@ def main():
             if args.model == 'gan':
                 logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
                 logging.info(f'{i} G-D loss: {g_loss.item():g} {d_loss.item():g}')
-                rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
-                logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
+
+            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
+            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
