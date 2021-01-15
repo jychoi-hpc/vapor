@@ -1452,34 +1452,31 @@ def main():
         if args.model == 'gan':
             valid = torch.ones(args.batch_size, 1, requires_grad=False).to(device)
             fake = torch.zeros(args.batch_size, 1, requires_grad=False).to(device)
-            z = torch.Tensor(np.random.normal(0, 1, data.shape)).to(device)
+            #z = torch.Tensor(np.random.normal(0, 1, data.shape)).to(device)
 
             # vq_loss, data_recon, perplexity, dloss = model(data+ns)
             vq_loss, data_recon, perplexity, dloss = model(data+ns)
             recon_error = F.mse_loss(data_recon, data) / data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
-            loss = recon_error + vq_loss + physics_error + dloss
 
-            d = discriminator(data_recon)
-            loss = loss + adversarial_loss(d, valid)
-            #print (d, loss.item())
+            dout = discriminator(data_recon)
+            g_loss = adversarial_loss(dout, valid)
+
+            loss = recon_error + vq_loss + physics_error + dloss + g_loss
+
             loss.backward()
             optimizer.step()
 
             #  Train Discriminator
             optimizer_D.zero_grad()
-            real_loss = adversarial_loss(discriminator(data), valid)
-            fake_loss = adversarial_loss(discriminator(data_recon.detach()), fake)
+            real_dout = discriminator(data)
+            fake_dout = discriminator(data_recon.detach())
+            real_loss = adversarial_loss(real_dout, valid)
+            fake_loss = adversarial_loss(fake_dout, fake)
             d_loss = (real_loss + fake_loss) / 2
-
-            if i % args.log_interval == 0:
-                print("[G loss: %f] [D loss: %f]"% (loss.item(), d_loss.item()))
 
             d_loss.backward()
             optimizer_D.step()
-
-
-        #print ('AFTER', model._vq_vae._embedding.weight.data.numpy().sum())
         
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
@@ -1509,6 +1506,12 @@ def main():
         
             if args.model == 'vae':
                 logging.info(f'{i} Loss: {recon_error.item():g}')
+
+            if args.model == 'gan':
+                logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
+                logging.info(f'{i} G-D loss: {g_loss.item():g} {d_loss.item():g}')
+                rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
+                logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
