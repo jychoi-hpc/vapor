@@ -274,6 +274,64 @@ def physics_loss(data, lb, data_recon, progress=False):
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
+def read_f0_nodes(istep, inodes, expdir=None, iphi=None):
+    """
+    Read XGC f0 data
+    """
+    def adios2_get_shape(f, varname):
+        nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
+        shape = f.available_variables()[varname]['Shape']
+        lshape = None
+        if shape == '':
+            ## Accessing Adios1 file
+            ## Read data and figure out
+            v = f.read(varname)
+            lshape = v.shape
+        else:
+            lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
+        return (nstep, lshape)
+
+    fname = os.path.join(expdir, 'restart_dir/xgc.f0.%05d.bp'%istep)
+    with ad2.open(fname, 'r') as f:
+        nstep, nsize = adios2_get_shape(f, 'i_f')
+        ndim = len(nsize)
+        nphi = nsize[0] if iphi is None else 1
+        iphi = 0 if iphi is None else iphi
+        nnodes = nsize[2]
+        nmu = nsize[1]
+        nvp = nsize[3]
+        start = (iphi,0,0,0)
+        count = (nphi,nmu,nnodes,nvp)
+        logging.info (f"Reading: {start} {count}")
+        i_f = f.read('i_f', start=start, count=count).astype('float64')
+
+    if i_f.shape[3] == 31:
+        i_f = np.append(i_f, i_f[...,30:31], axis=3)
+        # e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    if i_f.shape[3] == 39:
+        i_f = np.append(i_f, i_f[...,38:39], axis=3)
+        i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
+
+    i_f = np.moveaxis(i_f, 1, 2)
+
+    da_list = list()
+    lb_list = list()
+    for i in range(iphi, iphi+nphi):
+        for j in inodes:
+            da_list.append(i_f[i,j,:,:])
+            lb_list.append((istep,i,j))
+    
+    Z0 = np.array(da_list)
+    zlb = np.array(lb_list)
+    zmu = np.mean(Z0, axis=(1,2))
+    zsig = np.std(Z0, axis=(1,2))
+    zmin = np.min(Z0, axis=(1,2))
+    zmax = np.max(Z0, axis=(1,2))
+    Zif = (Z0 - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+
+    return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
+
+# %%
 def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16, fieldline=False):
     """
     Read XGC f0 data
@@ -1121,6 +1179,7 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
+    parser.add_argument('--surfid', help='flux surface index', type=int)
     parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
@@ -1163,6 +1222,7 @@ def main():
     group.add_argument('--vae', help='vqvae model', action='store_const', dest='model', const='vae')
     group.add_argument('--vqvae', help='vae model', action='store_const', dest='model', const='vqvae')
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
+    group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     parser.set_defaults(model='vqvae')
     args = parser.parse_args()
 
@@ -1279,8 +1339,16 @@ def main():
         logging.info (f'Data dir: {args.datadir}')
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
-            f0_data_list.append(read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
-                randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline))
+            if args.surfid is not None:
+                i = args.surfid
+                n = xgcexp.mesh.surf_len[i]
+                k = xgcexp.mesh.surf_idx[i,:n]-1
+                logging.info (f'Surf idx, len: {i} {n}')
+                _out = read_f0_nodes(istep, k, expdir=args.datadir)
+            else:
+                _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
+                            randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
+            f0_data_list.append(_out)
 
         lst = list(zip(*f0_data_list))
 
