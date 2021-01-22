@@ -274,7 +274,7 @@ def physics_loss(data, lb, data_recon, progress=False):
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
-def read_f0_nodes(istep, inodes, expdir=None, iphi=None):
+def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None):
     """
     Read XGC f0 data
     """
@@ -313,6 +313,14 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None):
         i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
 
     i_f = np.moveaxis(i_f, 1, 2)
+
+    if nextnode_arr is not None:
+        logging.info (f"Reading: untwist is on")
+        f_new = np.zeros_like(i_f)
+        for i in range(len(f_new)):
+            od = nextnode_arr[i+iphi]
+            f_new[i,:,:,:] = i_f[i+iphi,od,:,:]
+        i_f = f_new
 
     da_list = list()
     lb_list = list()
@@ -1180,6 +1188,7 @@ def main():
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
     parser.add_argument('--surfid', help='flux surface index', type=int)
+    parser.add_argument('--untwist', help='untwist', action='store_true')
     parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
     parser.add_argument('--checkpoint_interval', help='checkpoint_interval (default: %(default)s)', type=int, default=10_000)
@@ -1344,7 +1353,8 @@ def main():
                 n = xgcexp.mesh.surf_len[i]
                 k = xgcexp.mesh.surf_idx[i,:n]-1
                 logging.info (f'Surf idx, len: {i} {n}')
-                _out = read_f0_nodes(istep, k, expdir=args.datadir)
+                nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
+                _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
