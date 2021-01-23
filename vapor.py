@@ -1425,7 +1425,7 @@ def main():
     y = np.linspace(0, 1, ny, dtype=np.float32)
     xv, yv = np.meshgrid(x, y)
     grid = np.stack([xv, yv])
-    grid = torch.tensor(grid, dtype=torch.float)
+    grid = torch.tensor(grid, dtype=torch.float).to(device)
 
     ## Preparing training and validation set
     lx = list()
