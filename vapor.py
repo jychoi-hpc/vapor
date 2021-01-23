@@ -879,7 +879,9 @@ class Model(nn.Module):
         super(Model, self).__init__()
         
         self._grid = grid
-        self.width = 32
+        self.width = num_channels
+        if grid is not None:
+            self.width = 32
         self.fc0 = nn.Linear(3, self.width)
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, 1)
@@ -1241,6 +1243,7 @@ def main():
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
     parser.add_argument('--learning_rate', help='learning_rate', type=float, default=1e-3)
     parser.add_argument('--shaconv', help='shaconv', action='store_true')
+    parser.add_argument('--meshgrid', help='meshgrid', action='store_true')
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -1420,12 +1423,14 @@ def main():
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
-    _, nx, ny = Z0.shape
-    x = np.linspace(0, 1, nx, dtype=np.float32)
-    y = np.linspace(0, 1, ny, dtype=np.float32)
-    xv, yv = np.meshgrid(x, y)
-    grid = np.stack([xv, yv])
-    grid = torch.tensor(grid, dtype=torch.float).to(device)
+    grid = None
+    if args.meshgrid:
+        _, nx, ny = Z0.shape
+        x = np.linspace(0, 1, nx, dtype=np.float32)
+        y = np.linspace(0, 1, ny, dtype=np.float32)
+        xv, yv = np.meshgrid(x, y)
+        grid = np.stack([xv, yv])
+        grid = torch.tensor(grid, dtype=torch.float).to(device)
 
     ## Preparing training and validation set
     lx = list()
@@ -1649,10 +1654,26 @@ def main():
         valid_originals = valid_originals.to(device)
 
         if args.model == 'vqvae':
+            if model._grid is not None:
+                x = valid_originals
+                nbatch, nchannel, dim1, dim2 = x.shape
+                x = torch.cat([x, model._grid.repeat(nbatch,1,1,1)], dim=1)
+                x = x.permute(0, 2, 3, 1)
+                x = model.fc0(x)
+                x = x.permute(0, 3, 1, 2)
+                valid_originals = x
             vq_encoded = model._encoder(valid_originals)
             vq_output_eval = model._pre_vq_conv(vq_encoded)
             _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
             valid_reconstructions = model._decoder(valid_quantize)
+            if model._grid is not None:
+                x = valid_reconstructions
+                x = x.permute(0, 2, 3, 1)
+                x = model.fc1(x)
+                x = F.relu(x)
+                x = model.fc2(x)
+                x = x.permute(0, 3, 1, 2)
+                valid_reconstructions = x
 
             logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
             logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
