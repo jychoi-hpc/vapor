@@ -555,10 +555,28 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
             else:
+                if model._grid is not None:
+                    x = valid_originals
+                    nbatch, nchannel, dim1, dim2 = x.shape
+                    x = torch.cat([x, model._grid.repeat(nbatch,1,1,1)], dim=1)
+                    x = x.permute(0, 2, 3, 1)
+                    x = model.fc0(x)
+                    x = x.permute(0, 3, 1, 2)
+                    valid_originals = x
+
                 vq_encoded = model._encoder(valid_originals)
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
                 valid_reconstructions = model._decoder(valid_quantize)
+                if model._grid is not None:
+                    x = valid_reconstructions
+                    x = x.permute(0, 2, 3, 1)
+                    x = model.fc1(x)
+                    x = F.relu(x)
+                    x = model.fc2(x)
+                    x = x.permute(0, 3, 1, 2)
+                    valid_reconstructions = x
+
                 #print (valid_originals.sum().item(), valid_reconstructions.shape, valid_reconstructions.sum().item())
 
                 drecon = 0
@@ -857,10 +875,16 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False, grid=None):
         super(Model, self).__init__()
         
-        self._encoder = Encoder(num_channels, num_hiddens,
+        self._grid = grid
+        self.width = 32
+        self.fc0 = nn.Linear(3, self.width)
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, 1)
+
+        self._encoder = Encoder(self.width, num_hiddens,
                                 num_residual_layers, 
                                 num_residual_hiddens, rescale=rescale)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens, 
@@ -876,7 +900,7 @@ class Model(nn.Module):
         self._decoder = Decoder(embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
-                                num_residual_hiddens, num_channels)
+                                num_residual_hiddens, self.width)
 
         """
         Learn diff
@@ -913,6 +937,13 @@ class Model(nn.Module):
         self._shaconv = shaconv
         
     def forward(self, x):
+        if self._grid is not None:
+            nbatch, nchannel, dim1, dim2 = x.shape
+            x = torch.cat([x, self._grid.repeat(nbatch,1,1,1)], dim=1)
+            x = x.permute(0, 2, 3, 1)
+            x = self.fc0(x)
+            x = x.permute(0, 3, 1, 2)
+
         ## sha conv
         if self._shaconv:
             x = conv_hash_torch(x)
@@ -922,6 +953,14 @@ class Model(nn.Module):
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
+        x = x_recon
+        x = x.permute(0, 2, 3, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+        x = x.permute(0, 3, 1, 2)
+        x_recon = x
+
         drecon = 0
         dloss = 0
 
@@ -1381,6 +1420,13 @@ def main():
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
+    _, nx, ny = Z0.shape
+    x = np.linspace(0, 1, nx, dtype=np.float32)
+    y = np.linspace(0, 1, ny, dtype=np.float32)
+    xv, yv = np.meshgrid(x, y)
+    grid = np.stack([xv, yv])
+    grid = torch.tensor(grid, dtype=torch.float)
+
     ## Preparing training and validation set
     lx = list()
     ly = list()
@@ -1389,13 +1435,15 @@ def main():
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
         N = X.astype(np.float32)
+        # N = np.vstack([N, xv[np.newaxis,:,:], yv[np.newaxis,:,:]])
         #N = rescale(N, 2.0, anti_aliasing=False, multichannel=True)
         ## z-score normalization
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
         ly.append(zlb[i:i+num_channels])
 
-    data_variance = np.var(lx, dtype=np.float64)
+    _lx = [ x[0,:] for x in lx ]
+    data_variance = np.var(_lx, dtype=np.float64)
     log ('data_variance', data_variance)
 
     # %% 
@@ -1431,7 +1479,7 @@ def main():
     if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
-                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv, grid=grid).to(device)
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
