@@ -1205,6 +1205,186 @@ class Discriminator(nn.Module):
 
         return validity
 
+# %%
+"""
+Credit: https://github.com/zongyi-li/fourier_neural_operator
+"""
+
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+
+import matplotlib.pyplot as plt
+
+import operator
+from functools import reduce
+from functools import partial
+
+from timeit import default_timer
+from utilities3 import *
+
+from skimage.transform import rescale, resize, downscale_local_mean
+
+#Complex multiplication
+def compl_mul2d(a, b):
+    # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
+    op = partial(torch.einsum, "bixy,ioxy->boxy")
+    return torch.stack([
+        op(a[..., 0], b[..., 0]) - op(a[..., 1], b[..., 1]),
+        op(a[..., 1], b[..., 0]) + op(a[..., 0], b[..., 1])
+    ], dim=-1)
+
+
+################################################################
+# fourier layer
+################################################################
+class SpectralConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super(SpectralConv2d, self).__init__()
+
+        """
+        2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        Nx*Ny array requires Nx*(Ny/2+1) complex elements
+        """
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
+        self.modes2 = modes2
+
+        self.scale = (1 / (in_channels * out_channels))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
+
+    def forward(self, x):
+        batchsize = x.shape[0]
+        #Compute Fourier coeffcients up to factor of e^(- something constant)
+        # print ('SpectralConv2d', x.shape)
+        x_ft = torch.rfft(x, 2, normalized=True, onesided=True)
+        # print ('rfft', x_ft.shape)
+
+        # Multiply relevant Fourier modes
+        out_ft = torch.zeros(batchsize, self.in_channels,  x.size(-2), x.size(-1)//2 + 1, 2, device=x.device)
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+
+        #Return to physical space
+        x = torch.irfft(out_ft, 2, normalized=True, onesided=True, signal_sizes=( x.size(-2), x.size(-1)))
+        # print ('irfft', x.shape)
+        return x
+
+class SimpleBlock2d(nn.Module):
+    def __init__(self, modes1, modes2,  width):
+        super(SimpleBlock2d, self).__init__()
+
+        """
+        The overall network. It contains 4 layers of the Fourier layer.
+        1. Lift the input to the desire channel dimension by self.fc0 .
+        2. 4 layers of the integral operators u' = (W + K)(u).
+            W defined by self.w; K defined by self.conv .
+        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        
+        input: the solution of the coefficient function and locations (a(x, y), x, y)
+        input shape: (batchsize, x=s, y=s, c=3)
+        output: the solution 
+        output shape: (batchsize, x=s, y=s, c=1)
+        """
+
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+        self.fc0 = nn.Linear(3, self.width) # input channel is 3: (a(x, y), x, y)
+
+        self.conv0 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv1 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv2 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.conv3 = SpectralConv2d(self.width, self.width, self.modes1, self.modes2)
+        self.w0 = nn.Conv1d(self.width, self.width, 1)
+        self.w1 = nn.Conv1d(self.width, self.width, 1)
+        self.w2 = nn.Conv1d(self.width, self.width, 1)
+        self.w3 = nn.Conv1d(self.width, self.width, 1)
+        self.bn0 = torch.nn.BatchNorm2d(self.width)
+        self.bn1 = torch.nn.BatchNorm2d(self.width)
+        self.bn2 = torch.nn.BatchNorm2d(self.width)
+        self.bn3 = torch.nn.BatchNorm2d(self.width)
+
+
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, 1)
+
+    def forward(self, x):
+        global savedx0, savedx1
+        savedx0 = x.clone()
+        batchsize = x.shape[0]
+        size_x, size_y = x.shape[1], x.shape[2]
+
+        # print ('#0:', x.shape)
+        x = self.fc0(x)
+        x = x.permute(0, 3, 1, 2)
+        
+        # print ('#1:', x.shape)
+        savedx1 = x.clone()
+        x1 = self.conv0(x)
+        x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        x = self.bn0(x1 + x2)
+        x = F.relu(x)
+        
+        # print ('#2:', x.shape)
+        x1 = self.conv1(x)
+        x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        x = self.bn1(x1 + x2)
+        x = F.relu(x)
+        
+        # print ('#3:', x.shape)
+        x1 = self.conv2(x)
+        x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        x = self.bn2(x1 + x2)
+        x = F.relu(x)
+
+        # print ('#4:', x.shape)
+        x1 = self.conv3(x)
+        x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        x = self.bn3(x1 + x2)
+
+
+        # print ('#5:', x.shape)
+        x = x.permute(0, 2, 3, 1)
+        
+        # print ('#6:', x.shape)
+        x = self.fc1(x)
+        x = F.relu(x)
+        
+        # print ('#7:', x.shape)
+        x = self.fc2(x)
+        
+        # print ('#8:', x.shape)
+        return x
+
+class Net2d(nn.Module):
+    def __init__(self, modes, width):
+        super(Net2d, self).__init__()
+
+        """
+        A wrapper function
+        """
+
+        self.conv1 = SimpleBlock2d(modes, modes,  width)
+
+
+    def forward(self, x):
+        x = self.conv1(x)
+        return x.squeeze()
+
+
+    def count_params(self):
+        c = 0
+        for p in self.parameters():
+            c += reduce(operator.mul, list(p.size()))
+
+        return c
+
 def main():
     global device
     global xgcexp
@@ -1422,6 +1602,93 @@ def main():
 
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
+
+    if args.model == 'fno':
+        with ad2.open('enc.f0.00420.bp', 'r') as f:
+            Xenc = f.read('enc')
+
+        _, nx, ny = Z0.shape
+        x = np.linspace(0, 1, nx, dtype=np.float32)
+        y = np.linspace(0, 1, ny, dtype=np.float32)
+        xv, yv = np.meshgrid(x, y)
+        grid = np.stack([xv, yv])
+        grid = torch.tensor(grid, dtype=torch.float).to(device)
+
+        lx = list()
+        ly = list()
+        for i in range(len(Zif)):
+            X = Xenc[i,:]
+            X = rescale(X, (Z0.shape[-2]/Xenc.shape[-2],Z0.shape[-1]/Xenc.shape[-1]), anti_aliasing=False)
+            lx.append(np.stack([X, xv, yv], axis=2))
+            ly.append(Zif[i,:])
+        print (lx[0].shape, ly[0].shape)
+
+        training_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))
+        validation_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))    
+
+        train_loader = torch.utils.data.DataLoader(training_data, batch_size=batch_size, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
+
+        y_normalizer = UnitGaussianNormalizer(torch.Tensor(ly))
+
+        ################################################################
+        # configs
+        ################################################################
+        ntrain = len(lx)
+        ntest = len(lx)
+        modes = 12
+        width = 32
+        step_size = 100
+        gamma = 0.5
+
+        model = Net2d(modes, width).to(device)
+        print(model.count_params())
+
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+
+        myloss = LpLoss(size_average=False)
+        y_normalizer.cpu()
+        for ep in range(args.num_training_updates):
+            model.train()
+            t1 = default_timer()
+            train_mse = 0
+            for x, y in train_loader:
+                x, y = x.to(device), y.to(device)
+
+                optimizer.zero_grad()
+                # loss = F.mse_loss(model(x).view(-1), y.view(-1), reduction='mean')
+                out = model(x)
+                out = y_normalizer.decode(out)
+                y = y_normalizer.decode(y)
+                loss = myloss(out.view(batch_size,-1), y.view(batch_size,-1))
+                loss.backward()
+
+                optimizer.step()
+                train_mse += loss.item()
+
+            scheduler.step()
+
+            model.eval()
+            abs_err = 0.0
+            rel_err = 0.0
+            with torch.no_grad():
+                for x, y in test_loader:
+                    x, y = x.to(device), y.to(device)
+
+                    out = model(x)
+                    out = y_normalizer.decode(model(x))
+
+                    rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
+
+            train_mse/= ntrain
+            abs_err /= ntest
+            rel_err /= ntest
+
+            t2 = default_timer()
+            print(ep, t2-t1, train_mse, rel_err)
+
+        return 0
 
     grid = None
     if args.meshgrid:
