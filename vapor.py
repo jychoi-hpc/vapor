@@ -1223,7 +1223,7 @@ from functools import partial
 from timeit import default_timer
 from utilities3 import *
 
-from skimage.transform import rescale, resize, downscale_local_mean
+from PIL import Image
 
 #Complex multiplication
 def compl_mul2d(a, b):
@@ -1618,7 +1618,9 @@ def main():
         ly = list()
         for i in range(len(Zif)):
             X = Xenc[i,:]
-            X = rescale(X, (Z0.shape[-2]/Xenc.shape[-2],Z0.shape[-1]/Xenc.shape[-1]), anti_aliasing=False)
+            img = Image.fromarray(X)
+            img = img.resize((Z0.shape[-2],Z0.shape[-1]))
+            X = np.array(img)
             lx.append(np.stack([X, xv, yv], axis=2))
             ly.append(Zif[i,:])
         print (lx[0].shape, ly[0].shape)
