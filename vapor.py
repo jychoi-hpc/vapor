@@ -1632,6 +1632,10 @@ def main():
         test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
 
         y_normalizer = UnitGaussianNormalizer(torch.Tensor(ly))
+        if device.type == 'cpu':
+            y_normalizer.cpu()
+        else:
+            y_normalizer.cuda()
 
         ################################################################
         # configs
@@ -1650,7 +1654,7 @@ def main():
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
         myloss = LpLoss(size_average=False)
-        y_normalizer.cpu()
+
         for ep in range(args.num_training_updates):
             model.train()
             t1 = default_timer()
