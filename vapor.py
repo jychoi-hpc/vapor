@@ -70,6 +70,24 @@ def debug(*args, logtype='debug', sep=' '):
     getattr(logging, logtype)(sep.join(map(str, args)))
 
 # %%
+def relative_linf_error(x, y):
+    """
+    relative L-inf error: max(|x_i - y_i|)/max(|x_i|)
+    """
+    assert(x.shape == y.shape)
+    linf = np.max(np.abs(x-y))
+    maxv = np.max(np.abs(x))
+    return (linf/maxv)
+ 
+def rmse_error(x, y):
+    """
+    root mean square error: square-root of sum of all (x_i-y_i)**2
+    """
+    assert(x.shape == y.shape)
+    mse = np.mean((x-y)**2)
+    return np.sqrt(mse)
+
+# %%
 def conv_hash(X):
     d1, d2 = X.shape
     digest_size = hashlib.sha3_512().digest_size
@@ -1385,6 +1403,16 @@ class Net2d(nn.Module):
 
         return c
 
+def rescale(lx, grid):
+    ntrain = len(lx)
+    _nx, _ny = lx[0].shape
+    nx, ny, _ = grid.shape
+    x = torch.Tensor(lx).view(ntrain,1,_nx,_ny)
+    x = nn.functional.interpolate(x, size=(nx, ny))
+    x = x.permute(0, 2, 3, 1)
+    x = torch.cat([x, grid.repeat(ntrain,1,1,1)], dim=3)
+    return (x)
+
 def main():
     global device
     global xgcexp
@@ -1611,31 +1639,36 @@ def main():
         x = np.linspace(0, 1, nx, dtype=np.float32)
         y = np.linspace(0, 1, ny, dtype=np.float32)
         xv, yv = np.meshgrid(x, y)
-        grid = np.stack([xv, yv])
+        grid = np.stack([xv, yv], axis=2)
         grid = torch.tensor(grid, dtype=torch.float).to(device)
 
         lx = list()
         ly = list()
         for i in range(len(Zif)):
-            X = Xenc[i,:]
-            img = Image.fromarray(X)
-            img = img.resize((Z0.shape[-2],Z0.shape[-1]))
-            X = np.array(img)
-            lx.append(np.stack([X, xv, yv], axis=2))
+            # X = Xenc[i,:]
+            # img = Image.fromarray(X)
+            # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
+            # X = np.array(img)
+            # lx.append(np.stack([X, xv, yv], axis=2))
+            lx.append(Xenc[i,:])
             ly.append(Zif[i,:])
-        print (lx[0].shape, ly[0].shape)
+        
+        X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.1)
+        print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
 
-        training_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))
-        validation_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))    
+        X_train, y_train = rescale(X_train, grid), torch.Tensor(y_train)
+        X_test, y_test = rescale(X_test, grid), torch.Tensor(y_test)
+        X_full, y_full = rescale(lx, grid), torch.Tensor(ly)
+
+        training_data = torch.utils.data.TensorDataset(X_train, y_train)
+        validation_data = torch.utils.data.TensorDataset(X_test, y_test)
+        full_data = torch.utils.data.TensorDataset(X_full, y_full)
 
         train_loader = torch.utils.data.DataLoader(training_data, batch_size=batch_size, shuffle=True)
         test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
+        full_loader = torch.utils.data.DataLoader(full_data, batch_size=1, shuffle=False)
 
         y_normalizer = UnitGaussianNormalizer(torch.Tensor(ly))
-        if device.type == 'cpu':
-            y_normalizer.cpu()
-        else:
-            y_normalizer.cuda()
 
         ################################################################
         # configs
@@ -1654,13 +1687,14 @@ def main():
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
         myloss = LpLoss(size_average=False)
-
-        for ep in range(args.num_training_updates):
+        y_normalizer.to(device)
+        for ep in range(1, args.num_training_updates+1):
             model.train()
             t1 = default_timer()
             train_mse = 0
             for x, y in train_loader:
                 x, y = x.to(device), y.to(device)
+                # print ('x,y:', x.shape, y.shape)
 
                 optimizer.zero_grad()
                 # loss = F.mse_loss(model(x).view(-1), y.view(-1), reduction='mean')
@@ -1683,7 +1717,7 @@ def main():
                     x, y = x.to(device), y.to(device)
 
                     out = model(x)
-                    out = y_normalizer.decode(model(x))
+                    out = y_normalizer.decode(out)
 
                     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
@@ -1692,7 +1726,36 @@ def main():
             rel_err /= ntest
 
             t2 = default_timer()
-            print(ep, t2-t1, train_mse, rel_err)
+            log(ep, t2-t1, train_mse, rel_err)
+
+            if (ep % args.checkpoint_interval == 0) and (rank == 0):
+                save_checkpoint(DIR, prefix, model, train_mse, ep)
+
+        out_list = list()
+        out1_list = list()
+        for x, y in full_loader:
+            x, y = x.to(device), y.to(device)
+
+            out = model(x)
+            out1 = y_normalizer.decode(out)
+            out_list.append(out.detach().numpy())
+            out1_list.append(out1.detach().numpy())
+        
+        print (np.array(out_list).shape, np.array(out1_list).shape)
+        with ad2.open('fno.bp', 'w') as fw:
+            out = np.array(out_list)
+            x = out
+            shape, start, count = x.shape, [0,]*x.ndim, x.shape
+            fw.write('recon', x, shape, start, count)
+
+            out1 = np.array(out1_list)
+            x = out1
+            shape, start, count = x.shape, [0,]*x.ndim, x.shape
+            fw.write('norm', x, shape, start, count)
+
+            x = Zif
+            shape, start, count = x.shape, [0,]*x.ndim, x.shape
+            fw.write('Zif', x, shape, start, count)
 
         return 0
 
