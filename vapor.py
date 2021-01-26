@@ -1640,7 +1640,7 @@ def main():
         y = np.linspace(0, 1, ny, dtype=np.float32)
         xv, yv = np.meshgrid(x, y)
         grid = np.stack([xv, yv], axis=2)
-        grid = torch.tensor(grid, dtype=torch.float).to(device)
+        grid = torch.tensor(grid, dtype=torch.float)
 
         lx = list()
         ly = list()
@@ -1738,24 +1738,17 @@ def main():
 
             out = model(x)
             out1 = y_normalizer.decode(out)
-            out_list.append(out.detach().numpy())
-            out1_list.append(out1.detach().numpy())
+            out_list.append(out.detach().cpu().numpy())
+            out1_list.append(out1.detach().cpu().numpy())
         
         print (np.array(out_list).shape, np.array(out1_list).shape)
         with ad2.open('fno.bp', 'w') as fw:
+            shape, start, count = out.shape, [0,]*out.ndim, out.shape
             out = np.array(out_list)
-            x = out
-            shape, start, count = x.shape, [0,]*x.ndim, x.shape
-            fw.write('recon', x, shape, start, count)
-
             out1 = np.array(out1_list)
-            x = out1
-            shape, start, count = x.shape, [0,]*x.ndim, x.shape
-            fw.write('norm', x, shape, start, count)
-
-            x = Zif
-            shape, start, count = x.shape, [0,]*x.ndim, x.shape
-            fw.write('Zif', x, shape, start, count)
+            fw.write('recon', out, shape, start, count)
+            fw.write('norm', out1, shape, start, count)
+            fw.write('Zif', Zif, shape, start, count)
 
         return 0
 
