@@ -109,7 +109,7 @@ def conv_hash_torch(X):
             for j in range(c):
                 _X = X[i,j,:].cpu().numpy()
                 _Y = conv_hash(_X)
-                Y[i,j,:] = torch.Tensor(_Y).to(X.device)
+                Y[i,j,:] = torch.tensor(_Y).to(X.device)
         return Y
 
 # %%
@@ -903,9 +903,9 @@ class Model(nn.Module):
         self.width = num_channels
         if grid is not None:
             self.width = 32
-        self.fc0 = nn.Linear(3, self.width)
+            self.fc0 = nn.Linear(3, self.width)
         self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, 1)
+        self.fc2 = nn.Linear(128, num_channels)
 
         self._encoder = Encoder(self.width, num_hiddens,
                                 num_residual_layers, 
@@ -976,13 +976,16 @@ class Model(nn.Module):
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
-        x = x_recon
-        x = x.permute(0, 2, 3, 1)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.fc2(x)
-        x = x.permute(0, 3, 1, 2)
-        x_recon = x
+
+        #if self._grid is not None:
+        if True:
+            x = x_recon
+            x = x.permute(0, 2, 3, 1)
+            x = self.fc1(x)
+            x = F.relu(x)
+            x = self.fc2(x)
+            x = x.permute(0, 3, 1, 2)
+            x_recon = x.contiguous()
 
         drecon = 0
         dloss = 0
@@ -1436,7 +1439,7 @@ def rescale(lx, grid):
     ntrain = len(lx)
     _nx, _ny = lx[0].shape
     nx, ny, _ = grid.shape
-    x = torch.Tensor(lx).view(ntrain,1,_nx,_ny)
+    x = torch.tensor(lx).view(ntrain,1,_nx,_ny)
     x = nn.functional.interpolate(x, size=(nx, ny))
     x = x.permute(0, 2, 3, 1)
     x = torch.cat([x, grid.repeat(ntrain,1,1,1)], dim=3)
@@ -1650,7 +1653,8 @@ def main():
         zsig = np.r_[(lst[3])]
         zmin = np.r_[(lst[4])]
         zmax = np.r_[(lst[5])]
-        zlb = np.r_[(lst[6])]
+        zlb = np.r_[(lst[6])] ## array of (idx, step, iphi, inode)
+        zlb = np.hstack([np.arange(len(zlb))[:,np.newaxis], zlb])
         ## z-score normalization
         #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
         ## min-max normalization
@@ -1688,12 +1692,12 @@ def main():
         X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.1)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
 
-        # X_train, y_train = rescale(X_train, grid), torch.Tensor(y_train)
-        # X_test, y_test = rescale(X_test, grid), torch.Tensor(y_test)
-        # X_full, y_full = rescale(lx, grid), torch.Tensor(ly)
-        X_train, y_train = torch.Tensor(X_train), torch.Tensor(y_train)
-        X_test, y_test = torch.Tensor(X_test), torch.Tensor(y_test)
-        X_full, y_full = torch.Tensor(lx), torch.Tensor(ly)
+        # X_train, y_train = rescale(X_train, grid), torch.tensor(y_train)
+        # X_test, y_test = rescale(X_test, grid), torch.tensor(y_test)
+        # X_full, y_full = rescale(lx, grid), torch.tensor(ly)
+        X_train, y_train = torch.tensor(X_train), torch.tensor(y_train)
+        X_test, y_test = torch.tensor(X_test), torch.tensor(y_test)
+        X_full, y_full = torch.tensor(lx), torch.tensor(ly)
 
         training_data = torch.utils.data.TensorDataset(X_train, y_train)
         validation_data = torch.utils.data.TensorDataset(X_test, y_test)
@@ -1703,7 +1707,7 @@ def main():
         test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
         full_loader = torch.utils.data.DataLoader(full_data, batch_size=1, shuffle=False)
 
-        y_normalizer = UnitGaussianNormalizer(torch.Tensor(ly))
+        y_normalizer = UnitGaussianNormalizer(torch.tensor(ly))
 
         ################################################################
         # configs
@@ -1789,6 +1793,7 @@ def main():
             fw.write('Zif', Zif, shape, start, count)
 
         return 0
+    ## end of fno
 
     grid = None
     if args.meshgrid:
@@ -1821,11 +1826,11 @@ def main():
     # %% 
     # Loadding
     # X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.10, random_state=42)
-    # training_data = torch.utils.data.TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
-    # validation_data = torch.utils.data.TensorDataset(torch.Tensor(X_test), torch.Tensor(y_test))    
+    # training_data = torch.utils.data.TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+    # validation_data = torch.utils.data.TensorDataset(torch.tensor(X_test), torch.tensor(y_test))    
     # (2020/11) Temporary. Use all data for training
-    training_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))
-    validation_data = torch.utils.data.TensorDataset(torch.Tensor(lx), torch.Tensor(ly))    
+    training_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
+    validation_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
 
     training_loader = DataLoader(training_data, 
                                 batch_size=batch_size, 
@@ -1950,7 +1955,7 @@ def main():
         if args.model == 'gan':
             valid = torch.ones(args.batch_size, 1, requires_grad=False).to(device)
             fake = torch.zeros(args.batch_size, 1, requires_grad=False).to(device)
-            #z = torch.Tensor(np.random.normal(0, 1, data.shape)).to(device)
+            #z = torch.tensor(np.random.normal(0, 1, data.shape)).to(device)
 
             # vq_loss, data_recon, perplexity, dloss = model(data+ns)
             vq_loss, data_recon, perplexity, dloss = model(data+ns)
@@ -1987,7 +1992,7 @@ def main():
             lxx = [ lx[i] for i in idx ]
             lyy = [ ly[i] for i in idx ]
 
-            training_data = torch.utils.data.TensorDataset(torch.Tensor(lxx), torch.Tensor(lyy))
+            training_data = torch.utils.data.TensorDataset(torch.tensor(lxx), torch.tensor(lyy))
             training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
             total_trained[idx] += 1
 
