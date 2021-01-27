@@ -266,7 +266,10 @@ def physics_loss(data, lb, data_recon, progress=False):
     T_para_err = torch.tensor(0.).to(device)
     
     for i in tqdm(range(batch_size), disable=not progress):
-        inode = int(lb[i]) - args.inode
+        if num_channels==1:
+            inode = int(lb[i]) - args.inode
+        else:
+            inode = int(lb[i,0]) - args.inode
         mn = zmin[inode:inode+num_channels]
         mx = zmax[inode:inode+num_channels]
 
@@ -1668,26 +1671,29 @@ def main():
         x = np.linspace(0, 1, nx, dtype=np.float32)
         y = np.linspace(0, 1, ny, dtype=np.float32)
         xv, yv = np.meshgrid(x, y)
-        grid = np.stack([xv, yv], axis=2)
-        grid = torch.tensor(grid, dtype=torch.float)
+        # grid = np.stack([xv, yv], axis=2)
+        # grid = torch.tensor(grid, dtype=torch.float)
 
         lx = list()
         ly = list()
         for i in range(len(Zif)):
-            # X = Xenc[i,:]
-            # img = Image.fromarray(X)
-            # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
-            # X = np.array(img)
-            # lx.append(np.stack([X, xv, yv], axis=2))
-            lx.append(Xenc[i,:])
+            X = Xenc[i,:]
+            img = Image.fromarray(X)
+            img = img.resize((Z0.shape[-2],Z0.shape[-1]))
+            X = np.array(img)
+            lx.append(np.stack([X, xv, yv], axis=2))
+            # lx.append(Xenc[i,:])
             ly.append(Zif[i,:])
         
         X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.1)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
 
-        X_train, y_train = rescale(X_train, grid), torch.Tensor(y_train)
-        X_test, y_test = rescale(X_test, grid), torch.Tensor(y_test)
-        X_full, y_full = rescale(lx, grid), torch.Tensor(ly)
+        # X_train, y_train = rescale(X_train, grid), torch.Tensor(y_train)
+        # X_test, y_test = rescale(X_test, grid), torch.Tensor(y_test)
+        # X_full, y_full = rescale(lx, grid), torch.Tensor(ly)
+        X_train, y_train = torch.Tensor(X_train), torch.Tensor(y_train)
+        X_test, y_test = torch.Tensor(X_test), torch.Tensor(y_test)
+        X_full, y_full = torch.Tensor(lx), torch.Tensor(ly)
 
         training_data = torch.utils.data.TensorDataset(X_train, y_train)
         validation_data = torch.utils.data.TensorDataset(X_test, y_test)
@@ -1731,8 +1737,8 @@ def main():
                 optimizer.zero_grad()
                 # loss = F.mse_loss(model(x).view(-1), y.view(-1), reduction='mean')
                 out = model(x)
-                out = y_normalizer.decode(out)
-                y = y_normalizer.decode(y)
+                # out = y_normalizer.decode(out)
+                # y = y_normalizer.decode(y)
                 loss = myloss(out.view(batch_size,-1), y.view(batch_size,-1))
                 loss.backward()
 
@@ -1749,7 +1755,7 @@ def main():
                     x, y = x.to(device), y.to(device)
 
                     out = model(x)
-                    out = y_normalizer.decode(out)
+                    # out = y_normalizer.decode(out)
 
                     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
@@ -1771,7 +1777,7 @@ def main():
             out = model(x)
             out1 = y_normalizer.decode(out)
             out_list.append(out.detach().cpu().numpy())
-            out1_list.append(out1.detach().cpu().numpy())
+            out1_list.append(out1.detach().cpu().numpy().copy())
         
         print (np.array(out_list).shape, np.array(out1_list).shape)
         with ad2.open('fno.bp', 'w') as fw:
