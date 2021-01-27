@@ -977,8 +977,7 @@ class Model(nn.Module):
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
 
-        #if self._grid is not None:
-        if True:
+        if self._grid is not None:
             x = x_recon
             x = x.permute(0, 2, 3, 1)
             x = self.fc1(x)
@@ -1797,6 +1796,7 @@ def main():
 
     grid = None
     if args.meshgrid:
+        assert(num_channels==1)
         _, nx, ny = Z0.shape
         x = np.linspace(0, 1, nx, dtype=np.float32)
         y = np.linspace(0, 1, ny, dtype=np.float32)
