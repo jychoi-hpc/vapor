@@ -804,11 +804,9 @@ class ResidualStack(nn.Module):
 
 # %%
 class Encoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, rescale=None):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
         super(Encoder, self).__init__()
 
-        self._rescale=rescale
-        log ("Model rescale:", self._rescale)
         log ("in_channels, num_hiddens:", in_channels, num_hiddens)
 
         self._conv_0 = nn.Conv2d(in_channels=in_channels,
@@ -842,10 +840,10 @@ class Encoder(nn.Module):
     def forward(self, inputs):
         # (2020/11) Testing with resize
         x = inputs
-        if self._rescale is not None:
-            x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
-            x = self._conv_0(x)
-            x = F.relu(x)
+        # if self._rescale is not None:
+        #     x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
+        #     x = self._conv_0(x)
+        #     x = F.relu(x)
 
         x = self._conv_1(x)
         x = F.relu(x)
@@ -914,6 +912,9 @@ class Model(nn.Module):
         
         self._grid = grid
         self.width = num_channels
+        self.rescale = rescale
+        log ("Model rescale:", self.rescale)
+        
         if grid is not None:
             self.width = 32
             self.fc0 = nn.Linear(3, self.width)
@@ -922,7 +923,7 @@ class Model(nn.Module):
 
         self._encoder = Encoder(self.width, num_hiddens,
                                 num_residual_layers, 
-                                num_residual_hiddens, rescale=rescale)
+                                num_residual_hiddens)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens, 
                                       out_channels=embedding_dim,
                                       kernel_size=1, 
@@ -984,11 +985,17 @@ class Model(nn.Module):
         if self._shaconv:
             x = conv_hash_torch(x)
         
-        #import pdb; pdb.set_trace()
+        if self.rescale is not None:
+            b, c, nx, ny = x.shape
+            x = F.interpolate(x, size=(nx*self.rescale, ny*self.rescale))
+
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         x_recon = self._decoder(quantized)
+
+        if self.rescale is not None:
+            x_recon = F.interpolate(x_recon, size=(nx, ny))
 
         if self._grid is not None:
             x = x_recon
