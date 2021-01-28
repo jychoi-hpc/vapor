@@ -295,7 +295,7 @@ def physics_loss(data, lb, data_recon, progress=False):
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
-def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None):
+def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, rescale=None):
     """
     Read XGC f0 data
     """
@@ -352,6 +352,19 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None):
     
     Z0 = np.array(da_list)
     zlb = np.array(lb_list)
+
+    if rescale is not None:
+        log ("Input rescale:", rescale)
+        nn, nx, ny = Z0.shape
+        _Z0 = np.zeros((nn,nx*rescale,ny*rescale), dtype=Z0.dtype)
+    
+        for i in range(len(_Z0)):
+            X = Z0[i,:]
+            img = Image.fromarray(X)
+            img = img.resize((_Z0.shape[-2],_Z0.shape[-1]))
+            _Z0[i,:] = np.array(img)
+        Z0 = _Z0
+
     zmu = np.mean(Z0, axis=(1,2))
     zsig = np.std(Z0, axis=(1,2))
     zmin = np.min(Z0, axis=(1,2))
@@ -1502,6 +1515,7 @@ def main():
     group1.add_argument('--inode', help='inode', type=int, default=0)
     group1.add_argument('--nnodes', help='nnodes', type=int, default=None)
     group1.add_argument('--rescale', help='rescale', type=int, default=None)
+    group1.add_argument('--rescaleinput', help='rescaleinput', type=int, default=None)
     group1.add_argument('--learndiff', help='learndiff', action='store_true')
     group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
     group1.add_argument('--fieldline', help='fieldline', action='store_true')
@@ -1639,7 +1653,7 @@ def main():
                     k = xgcexp.mesh.surf_idx[i,:n]-1
                     logging.info (f'Surf idx, len: {i} {n}')
                     nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
-                    _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr)
+                    _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                     f0_data_list.append(_out)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
