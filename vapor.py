@@ -30,7 +30,7 @@ import random
 
 # %%
 import torch
-torch.autograd.set_detect_anomaly(True)
+#torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -1467,7 +1467,7 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
-    parser.add_argument('--surfid', help='flux surface index', type=int)
+    parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
     parser.add_argument('--untwist', help='untwist', action='store_true')
     parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
@@ -1633,16 +1633,18 @@ def main():
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
             if args.surfid is not None:
-                i = args.surfid
-                n = xgcexp.mesh.surf_len[i]
-                k = xgcexp.mesh.surf_idx[i,:n]-1
-                logging.info (f'Surf idx, len: {i} {n}')
-                nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
-                _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr)
+                for i in args.surfid:
+                    #i = args.surfid
+                    n = xgcexp.mesh.surf_len[i]
+                    k = xgcexp.mesh.surf_idx[i,:n]-1
+                    logging.info (f'Surf idx, len: {i} {n}')
+                    nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
+                    _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr)
+                    f0_data_list.append(_out)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
-            f0_data_list.append(_out)
+                f0_data_list.append(_out)
 
         lst = list(zip(*f0_data_list))
 
