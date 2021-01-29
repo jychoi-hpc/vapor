@@ -295,10 +295,14 @@ def physics_loss(data, lb, data_recon, progress=False):
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
-def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, rescale=None):
+def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, rescale=None, docache=True):
     """
     Read XGC f0 data
     """
+    global _f0_saved
+    if "_f0_saved" not in globals():
+        _f0_saved = None
+
     def adios2_get_shape(f, varname):
         nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
         shape = f.available_variables()[varname]['Shape']
@@ -324,7 +328,13 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
         start = (iphi,0,0,0)
         count = (nphi,nmu,nnodes,nvp)
         logging.info (f"Reading: {start} {count}")
-        i_f = f.read('i_f', start=start, count=count).astype('float64')
+        if docache and (_f0_saved is not None):
+            logging.info (f"Reading from cache")
+            i_f = _f0_saved
+        else:
+            i_f = f.read('i_f', start=start, count=count).astype('float64')
+            if docache and (_f0_saved is None):
+                _f0_saved = i_f
 
     if i_f.shape[3] == 31:
         i_f = np.append(i_f, i_f[...,30:31], axis=3)
@@ -990,10 +1000,15 @@ class Model(nn.Module):
             x = F.interpolate(x, size=(nx*self.rescale, ny*self.rescale))
             print ('scale-up', x.shape)
 
+        print ('#0:', x.shape)
         z = self._encoder(x)
+        print ('#1:', z.shape)
         z = self._pre_vq_conv(z)
+        print ('#2:', z.shape)
         loss, quantized, perplexity, _ = self._vq_vae(z)
+        print ('#3:', quantized.shape)
         x_recon = self._decoder(quantized)
+        print ('#4:', x_recon.shape)
 
         if self.rescale is not None:
             import pdb; pdb.set_trace()
@@ -1580,7 +1595,8 @@ def main():
     # %%
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info ('device: %s' % device)
-
+    
+    # torch.set_deterministic(True)
     if args.seed is not None:
         random.seed(args.seed)
         np.random.seed(args.seed)
