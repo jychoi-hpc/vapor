@@ -988,6 +988,7 @@ class Model(nn.Module):
         if self.rescale is not None:
             b, c, nx, ny = x.shape
             x = F.interpolate(x, size=(nx*self.rescale, ny*self.rescale))
+            print ('scale-up', x.shape)
 
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
@@ -995,7 +996,9 @@ class Model(nn.Module):
         x_recon = self._decoder(quantized)
 
         if self.rescale is not None:
+            import pdb; pdb.set_trace()
             x_recon = F.interpolate(x_recon, size=(nx, ny))
+            print ('scale-down', x_recon.shape)
 
         if self._grid is not None:
             x = x_recon
@@ -1655,12 +1658,10 @@ def main():
             logging.info (f'Reading: {istep}')
             if args.surfid is not None:
                 for i in args.surfid:
-                    #i = args.surfid
-                    n = xgcexp.mesh.surf_len[i]
-                    k = xgcexp.mesh.surf_idx[i,:n]-1
-                    logging.info (f'Surf idx, len: {i} {n}')
+                    nodes = xgcexp.mesh.surf_nodes(i)
+                    logging.info (f'Surf idx, len: {i} {len(nodes)}')
                     nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
-                    _out = read_f0_nodes(istep, k, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
+                    _out = read_f0_nodes(istep, nodes, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                     f0_data_list.append(_out)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
