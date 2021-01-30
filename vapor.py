@@ -1000,15 +1000,15 @@ class Model(nn.Module):
             x = F.interpolate(x, size=(nx*self.rescale, ny*self.rescale))
             print ('scale-up', x.shape)
 
-        print ('#0:', x.shape)
+        # print ('#0:', x.shape)
         z = self._encoder(x)
-        print ('#1:', z.shape)
+        # print ('#1:', z.shape)
         z = self._pre_vq_conv(z)
-        print ('#2:', z.shape)
+        # print ('#2:', z.shape)
         loss, quantized, perplexity, _ = self._vq_vae(z)
-        print ('#3:', quantized.shape)
+        # print ('#3:', quantized.shape)
         x_recon = self._decoder(quantized)
-        print ('#4:', x_recon.shape)
+        # print ('#4:', x_recon.shape)
 
         if self.rescale is not None:
             import pdb; pdb.set_trace()
