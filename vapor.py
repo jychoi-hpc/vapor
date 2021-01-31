@@ -295,14 +295,10 @@ def physics_loss(data, lb, data_recon, progress=False):
     return (den_err, u_para_err, T_perp_err, T_para_err)
 
 # %%
-def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, rescale=None, docache=True):
+def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, rescale=None):
     """
     Read XGC f0 data
     """
-    global _f0_saved
-    if "_f0_saved" not in globals():
-        _f0_saved = None
-
     def adios2_get_shape(f, varname):
         nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
         shape = f.available_variables()[varname]['Shape']
@@ -328,13 +324,7 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
         start = (iphi,0,0,0)
         count = (nphi,nmu,nnodes,nvp)
         logging.info (f"Reading: {start} {count}")
-        if docache and (_f0_saved is not None):
-            logging.info (f"Reading from cache")
-            i_f = _f0_saved
-        else:
-            i_f = f.read('i_f', start=start, count=count).astype('float64')
-            if docache and (_f0_saved is None):
-                _f0_saved = i_f
+        i_f = f.read('i_f', start=start, count=count).astype('float64')
 
     if i_f.shape[3] == 31:
         i_f = np.append(i_f, i_f[...,30:31], axis=3)
@@ -1673,12 +1663,14 @@ def main():
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
             if args.surfid is not None:
+                node_list = list()
                 for i in args.surfid:
-                    nodes = xgcexp.mesh.surf_nodes(i)
-                    logging.info (f'Surf idx, len: {i} {len(nodes)}')
-                    nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
-                    _out = read_f0_nodes(istep, nodes, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
-                    f0_data_list.append(_out)
+                    _nodes = xgcexp.mesh.surf_nodes(i)
+                    logging.info (f'Surf idx, len: {i} {len(_nodes)}')
+                    node_list.extend(_nodes)
+                nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
+                _out = read_f0_nodes(istep, node_list, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
+                f0_data_list.append(_out)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
