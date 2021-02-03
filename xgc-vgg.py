@@ -229,13 +229,14 @@ if __name__ == "__main__":
             
             optimizer.zero_grad()
             
-            outputs  = model(inputs)
-            _, preds = torch.max(outputs, 1)
-            loss = criterion(outputs, labels)
+            with torch.set_grad_enabled(True):
+                outputs  = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                loss = criterion(outputs, labels)
 
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
+                loss.backward()
+                optimizer.step()
+                #scheduler.step()
             
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
