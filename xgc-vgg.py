@@ -81,7 +81,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
     print(opt)
 
-    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+    logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
 
     logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
     logging.debug("All settings used:") 
@@ -172,6 +172,7 @@ if __name__ == "__main__":
     dataset = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
 
     training_data, validation_data = random_split(dataset, [int(len(dataset)*0.8), len(dataset)-int(len(dataset)*0.8)])
+    logging.debug("Split: %d %d"%(len(training_data), len(validation_data))) 
 
     p_training_data = list()
     for _, y in training_data:
@@ -183,10 +184,13 @@ if __name__ == "__main__":
         i = y.item()
         p_validation_data.append(1/len(fcls)/fcls[i])
 
-    sampler=WeightedRandomSampler(p_training_data, len(fcls)*batch_size*100, replacement=True)
+    training_sample_size = len(fcls)*batch_size*100
+    validation_sample_size = len(fcls)*batch_size*10
+    logging.debug("Sample: %d %d"%(training_sample_size, validation_sample_size)) 
+    sampler=WeightedRandomSampler(p_training_data, training_sample_size, replacement=True)
     training_loader = DataLoader(training_data, batch_size=batch_size, pin_memory=True, sampler=sampler, drop_last=True)
 
-    sampler2=WeightedRandomSampler(p_validation_data, len(fcls)*batch_size*10, replacement=False)
+    sampler2=WeightedRandomSampler(p_validation_data, validation_sample_size, replacement=False)
     validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
 
     # %%
@@ -245,8 +249,8 @@ if __name__ == "__main__":
             if (i+1) % 100 == 0:
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
         
-        avg_loss = loss_train / len(training_data)
-        avg_acc = acc_train.double() / len(training_data)
+        avg_loss = loss_train / training_sample_size
+        avg_acc = acc_train.double() / training_sample_size
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Epoch', epoch_loss, epoch_acc))
         
         model.eval()    
@@ -267,15 +271,17 @@ if __name__ == "__main__":
             if (i+1) % 100 == 0:
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(validation_loader), 'Test', loss.item()))
 
-        avg_loss_val = loss_val / len(validation_data)
-        avg_acc_val = acc_val.double() / len(validation_data)
+        avg_loss_val = loss_val / validation_sample_size
+        avg_acc_val = acc_val.double() / validation_sample_size
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Test', epoch_loss, epoch_acc))
         print()
         print("Avg loss (train): {:.4f}".format(avg_loss))
         print("Avg acc (train): {:.4f}".format(avg_acc))
         print("Avg loss (val): {:.4f}".format(avg_loss_val))
         print("Avg acc (val): {:.4f}".format(avg_acc_val))
+        print("Label")
         print(labels)
+        print("Pred")
         print(preds)
         print()    
 
