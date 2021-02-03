@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
                 loss.backward()
                 optimizer.step()
-                #scheduler.step()
+                scheduler.step()
             
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
