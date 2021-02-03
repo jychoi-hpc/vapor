@@ -17,6 +17,9 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 
 import adios2 as ad2
+import argparse
+import logging
+import sys
 
 # %%
 def visualize_model(model, dataloaders, num_images=6):
@@ -66,6 +69,24 @@ def show_databatch(inputs, classes):
     imshow(out, title=[x.item() for x in classes])
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exp', help='exp', default='')
+    parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training")
+    parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
+    parser.add_argument("--lr", type=float, default=0.001, help="adam: learning rate")
+    # parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
+    # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
+    opt = parser.parse_args()
+    print(opt)
+
+    logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+    logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
+    logging.debug("All settings used:") 
+    for k,v in sorted(vars(opt).items()): 
+        logging.debug("\t{0}: {1}".format(k,v))
+
     # %%
     # psi_surf: psi value of each surface
     # surf_len: # of nodes of each surface
@@ -145,7 +166,7 @@ if __name__ == "__main__":
     lx[0].shape, ly[0]
 
     # %%
-    batch_size=32
+    batch_size=opt.batch_size
 
     dataset = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
 
@@ -179,13 +200,13 @@ if __name__ == "__main__":
     model = vgg_based
 
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9)
     # Decay LR by a factor of 0.1 every 7 epochs
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
     # %%
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_epochs = 10
+    num_epochs = opt.n_epochs
 
     model.to(device)
     since = time.time()    
