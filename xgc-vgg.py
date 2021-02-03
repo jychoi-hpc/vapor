@@ -203,7 +203,7 @@ if __name__ == "__main__":
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9)
     # Decay LR by a factor of 0.1 every 7 epochs
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
     # %%
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -227,7 +227,7 @@ if __name__ == "__main__":
             inputs = inputs.to(device)
             labels = labels.to(device)
             ns = torch.normal(mean=0.0, std=inputs*0.1)
-            print (model.features[0].weight.sum().item())
+            #print (model.features[0].weight.sum().item())
             
             optimizer.zero_grad()
             
@@ -238,7 +238,7 @@ if __name__ == "__main__":
 
                 loss.backward()
                 optimizer.step()
-                scheduler.step()
+                #scheduler.step()
             
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
