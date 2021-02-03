@@ -77,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=0.001, help="adam: learning rate")
     # parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
     # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
+    parser.add_argument('--restart', help='restart', action='store_true')
     opt = parser.parse_args()
     print(opt)
 
@@ -208,6 +209,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = opt.n_epochs
 
+    if opt.restart:
+        model = torch.load('xgc-vgg19.torch')
     model.to(device)
     since = time.time()    
     for epoch in range(num_epochs):
