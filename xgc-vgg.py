@@ -117,6 +117,8 @@ if __name__ == "__main__":
     print (i_f.shape)    
 
     # %%
+    """
+    ## 20 classes
     fmax = list()
     for i in range(len(psi_surf)):
         n = surf_len[i]
@@ -141,9 +143,22 @@ if __name__ == "__main__":
 
     for i in range(len(rz)):
         if r[i]>r[0]: nclass[i] += 1
-            
+    """
+    
+    ## 202 classes
+    nclass = np.zeros(len(rz), dtype=np.int)
+    for i in range(len(psi_surf)):
+        n = surf_len[i]
+        k = surf_idx[i,:n]-1
+        nclass[k] = i*2
+
+    for i in range(len(rz)):
+        if r[i]>r[0]: 
+            nclass[i] = nclass[i]+1
+
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
+    print ("fcls, nclasses", len(fcls), max(unique)+1)
     # plt.figure()
     # plt.bar(unique, counts)
 
@@ -199,7 +214,8 @@ if __name__ == "__main__":
     vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
     number_features = vgg_based.classifier[6].in_features
     features = list(vgg_based.classifier.children())[:-1] # Remove last layer
-    features.extend([torch.nn.Linear(number_features, 20)])
+    num_classes = max(unique)+1
+    features.extend([torch.nn.Linear(number_features, num_classes)])
     vgg_based.classifier = torch.nn.Sequential(*features)
     model = vgg_based
 
