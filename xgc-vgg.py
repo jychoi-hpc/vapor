@@ -251,7 +251,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             
             with torch.set_grad_enabled(True):
-                outputs  = model(inputs) #+ns)
+                outputs  = model(inputs+ns)
                 _, preds = torch.max(outputs, 1)
                 loss = criterion(outputs, labels)
 
