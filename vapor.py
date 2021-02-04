@@ -112,6 +112,15 @@ def conv_hash_torch(X):
                 Y[i,j,:] = torch.tensor(_Y).to(X.device)
         return Y
 
+def parse_rangestr(rangestr):
+    _rangestr = rangestr.replace(' ', '')
+    # Convert String ranges to list 
+    # Using sum() + list comprehension + enumerate() + split() 
+    res = sum(((list(range(*[int(b) + c  
+            for c, b in enumerate(a.split('-'))])) 
+            if '-' in a else [int(a)]) for a in _rangestr.split(',')), [])
+    return res
+
 # %%
 def init(counter):
     """
@@ -1495,7 +1504,8 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
-    parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
+    # parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
+    parser.add_argument('--surfid', help='flux surface index')
     parser.add_argument('--untwist', help='untwist', action='store_true')
     parser.add_argument('--average_interval', help='average_interval (default: %(default)s)', type=int)
     parser.add_argument('--log_interval', help='log_interval (default: %(default)s)', type=int, default=1_000)
@@ -1670,8 +1680,9 @@ def main():
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
             if args.surfid is not None:
+                surfid_list = parse_rangestr(args.surfid)
                 node_list = list()
-                for i in args.surfid:
+                for i in surfid_list:
                     _nodes = xgcexp.mesh.surf_nodes(i)
                     logging.info (f'Surf idx, len: {i} {len(_nodes)}')
                     node_list.extend(_nodes)
