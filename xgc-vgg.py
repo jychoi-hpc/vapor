@@ -229,13 +229,13 @@ if __name__ == "__main__":
             inputs , labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
-            ns = torch.normal(mean=0.0, std=inputs*0.1)
+            ns = torch.normal(mean=0.0, std=inputs*0.01)
             #print (model.features[0].weight.sum().item())
             
             optimizer.zero_grad()
             
             with torch.set_grad_enabled(True):
-                outputs  = model(inputs+ns)
+                outputs  = model(inputs) #+ns)
                 _, preds = torch.max(outputs, 1)
                 loss = criterion(outputs, labels)
 
