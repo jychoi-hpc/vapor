@@ -1514,6 +1514,12 @@ def main():
     parser.add_argument('--fno_nmodes', help='fno num. of modes', type=int, default=12)
     parser.add_argument('--fno_width', help='fno width', type=int, default=32)
     parser.add_argument('--fno_nlayers', help='fno num. of layers', type=int, default=3)
+    parser.add_argument('--vgg', help='vgg', action='store_true')
+
+    parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
+    parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
+    parser.add_argument('--c_gamma', help='c_gamma', type=float, default=1.0)
+    parser.add_argument('--c_delta', help='c_delta', type=float, default=1.0)
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -1643,6 +1649,7 @@ def main():
     decay = 0.99
     learning_rate = args.learning_rate
 
+    alpah, beta, gamma, delta = args.c_alpha, args.c_beta, args.c_gamma, args.c_delta
     #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
     logging.info ('prefix: %s' % prefix)
 
@@ -1928,6 +1935,12 @@ def main():
         model = _model
     log ('istart:', istart)
 
+    if args.vgg:
+        vgg19_model = torch.load('xgc-vgg19.torch')
+        feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
+        feature_extractor = feature_extractor.to(device)
+        criterion_content = torch.nn.MSELoss().to(device)
+
     # %%
     nworkers = args.nworkers if args.nworkers is not None else 8
     if args.nworkers is None and hasattr(os, 'sched_getaffinity'):
@@ -1967,7 +1980,14 @@ def main():
                     print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err)
                 # physics_error += den_err/ds * torch.mean(data_recon)
                 physics_error += den_err + u_para_err + T_perp_err + T_para_err
-            loss = recon_error + vq_loss + physics_error + dloss
+
+            feature_loss = torch.tensor(0.0).to(data_recon.device)
+            if args.vgg:
+                recon_features = feature_extractor(data_recon)
+                data_features = feature_extractor(data+ns)
+                feature_loss = criterion_content(recon_features, data_features)
+
+            loss = recon_error + alpah*vq_loss + beta*physics_error + gamma*dloss + delta*feature_loss
             loss.backward()
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
@@ -2032,7 +2052,7 @@ def main():
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
             if args.model == 'vqvae':
-                logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
+                logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {feature_loss.item():g} {len(training_loader.dataset)} {len(data)}')
                 
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
