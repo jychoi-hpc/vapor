@@ -117,7 +117,6 @@ if __name__ == "__main__":
     print (i_f.shape)    
 
     # %%
-    """
     ## 20 classes
     fmax = list()
     for i in range(len(psi_surf)):
@@ -134,17 +133,17 @@ if __name__ == "__main__":
     # for i in range(len(lx)):
     #     plt.text(i, lx[i], str(inds[i]))
         
-    inds = inds*2
     nclass = np.zeros(len(rz), dtype=np.int)
     for i in range(len(psi_surf)):
         n = surf_len[i]
         k = surf_idx[i,:n]-1
-        nclass[k] = inds[i]
+        nclass[k] = inds[i]*2
 
     for i in range(len(rz)):
-        if r[i]>r[0]: nclass[i] += 1
-    """
+        if r[i]<r[0]:
+            nclass[i] = nclass[i]+1
     
+    """
     ## 202 classes
     nclass = np.zeros(len(rz), dtype=np.int)
     for i in range(len(psi_surf)):
@@ -155,6 +154,7 @@ if __name__ == "__main__":
     for i in range(len(rz)):
         if r[i]>r[0]: 
             nclass[i] = nclass[i]+1
+    """
 
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
