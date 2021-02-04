@@ -204,7 +204,7 @@ if __name__ == "__main__":
     sampler=WeightedRandomSampler(p_training_data, training_sample_size, replacement=True)
     training_loader = DataLoader(training_data, batch_size=batch_size, pin_memory=True, sampler=sampler, drop_last=True)
 
-    sampler2=WeightedRandomSampler(p_validation_data, validation_sample_size, replacement=False)
+    sampler2=WeightedRandomSampler(p_validation_data, validation_sample_size, replacement=True)
     validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
 
     # %%
