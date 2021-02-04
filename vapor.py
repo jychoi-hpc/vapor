@@ -1530,6 +1530,7 @@ def main():
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
     parser.add_argument('--c_gamma', help='c_gamma', type=float, default=1.0)
     parser.add_argument('--c_delta', help='c_delta', type=float, default=1.0)
+    parser.add_argument('--c_zeta', help='c_zeta', type=float, default=1.0)
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -1659,7 +1660,7 @@ def main():
     decay = 0.99
     learning_rate = args.learning_rate
 
-    alpah, beta, gamma, delta = args.c_alpha, args.c_beta, args.c_gamma, args.c_delta
+    alpha, beta, gamma, delta, zeta = args.c_alpha, args.c_beta, args.c_gamma, args.c_delta, args.c_zeta
     #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
     logging.info ('prefix: %s' % prefix)
 
@@ -1998,7 +1999,7 @@ def main():
                 data_features = feature_extractor(data+ns)
                 feature_loss = criterion_content(recon_features, data_features)
 
-            loss = recon_error + alpah*vq_loss + beta*physics_error + gamma*dloss + delta*feature_loss
+            loss = alpha*recon_error + beta*vq_loss + gamma*physics_error + delta*dloss + zeta*feature_loss
             loss.backward()
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
