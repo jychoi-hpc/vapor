@@ -158,7 +158,8 @@ if __name__ == "__main__":
 
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
-    print ("fcls, nclasses", len(fcls), max(unique)+1)
+    num_classes = (max(unique)//10+1)*10
+    print ("fcls, max nclasses", len(fcls), num_classes)
     # plt.figure()
     # plt.bar(unique, counts)
 
@@ -214,7 +215,6 @@ if __name__ == "__main__":
     vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
     number_features = vgg_based.classifier[6].in_features
     features = list(vgg_based.classifier.children())[:-1] # Remove last layer
-    num_classes = max(unique)+1
     features.extend([torch.nn.Linear(number_features, num_classes)])
     vgg_based.classifier = torch.nn.Sequential(*features)
     model = vgg_based
