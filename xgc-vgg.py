@@ -68,6 +68,19 @@ def show_databatch(inputs, classes):
     out = torchvision.utils.make_grid(inputs)
     imshow(out, title=[x.item() for x in classes])
 
+def digitizing(x, nbins):
+    """
+    idx ranges from 1 ... nbins
+    nan is 0
+    """
+    assert(nbins>1)
+    _x = x[~np.isnan(x)]
+    _, bins = np.histogram(_x, bins=nbins)
+    idx = np.digitize(x, bins, right=True)
+    idx = np.where(idx==0, 1, idx)
+    idx = np.where(idx==nbins+1, 0, idx)
+    return (idx, bins)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -117,6 +130,7 @@ if __name__ == "__main__":
     print (i_f.shape)    
 
     # %%
+    """
     ## 20 classes
     fmax = list()
     for i in range(len(psi_surf)):
@@ -142,7 +156,8 @@ if __name__ == "__main__":
     for i in range(len(rz)):
         if r[i]<r[0]:
             nclass[i] = nclass[i]+1
-    
+    """
+
     """
     ## 202 classes
     nclass = np.zeros(len(rz), dtype=np.int)
@@ -155,6 +170,21 @@ if __name__ == "__main__":
         if r[i]>r[0]: 
             nclass[i] = nclass[i]+1
     """
+
+    ## 1088 classes
+    x = np.where(theta==-10, np.nan, theta)
+    theta_id, theta_bins = digitizing(x, 32)
+
+    node_psi = np.zeros_like(theta)
+    node_psi[:] = np.nan
+    for i in range(len(psi_surf)):
+        n = surf_len[i]
+        k = surf_idx[i,:n]
+        node_psi[k] = psi_surf[i]
+
+    psi_id, psi_bins = digitizing(node_psi, 32)
+
+    nclass = psi_id*33+theta_id
 
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
