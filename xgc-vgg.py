@@ -330,5 +330,5 @@ if __name__ == "__main__":
         print(preds)
         print()    
 
-        torch.save(model, 'xgc-vgg19.torch')
+        torch.save(model, 'xgc-vgg19-%d.torch'%num_classes)
         print('Done.')
