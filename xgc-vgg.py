@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # psi_surf: psi value of each surface
     # surf_len: # of nodes of each surface
     # surf_idx: list of node index of each surface
-    with ad2.open('d3d_coarse_v2/xgc.mesh.bp', 'r') as f:
+    with ad2.open('d3d_coarse_v2_4x/xgc.mesh.bp', 'r') as f:
         nnodes = int(f.read('n_n', ))
         ncells = int(f.read('n_t', ))
         rz = f.read('rz')
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     print (nnodes)
 
     # %%
-    with ad2.open('d3d_coarse_v2/restart_dir/xgc.f0.00420.bp','r') as f:
+    with ad2.open('d3d_coarse_v2_4x/restart_dir/xgc.f0.00420.bp','r') as f:
         i_f = f.read('i_f')
     i_f = np.moveaxis(i_f,1,2)
     print (i_f.shape)    
@@ -197,14 +197,15 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
 
-    file_list = ['d3d_coarse_v2/restart_dir/xgc.f0.00410.bp',\
-        'd3d_coarse_v2/restart_dir/xgc.f0.00420.bp',\
-        'd3d_coarse_v2/restart_dir/xgc.f0.00430.bp']
+    file_list = ['d3d_coarse_v2_4x/restart_dir/xgc.f0.00410.bp',\
+        'd3d_coarse_v2_4x/restart_dir/xgc.f0.00420.bp',\
+        'd3d_coarse_v2_4x/restart_dir/xgc.f0.00430.bp']
     
     lx = list()
     ly = list()
     lp = list()
     for fname in file_list:
+        print ("Reading: ", fname)
         with ad2.open(fname,'r') as f:
             i_f = f.read('i_f')
         i_f = np.moveaxis(i_f,1,2)
