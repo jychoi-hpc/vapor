@@ -196,18 +196,28 @@ if __name__ == "__main__":
     # %%
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
+
+    file_list = ['d3d_coarse_v2/restart_dir/xgc.f0.00410.bp',\
+        'd3d_coarse_v2/restart_dir/xgc.f0.00420.bp',\
+        'd3d_coarse_v2/restart_dir/xgc.f0.00430.bp']
+    
     lx = list()
     ly = list()
     lp = list()
-    for iphi in range(i_f.shape[0]):
-        dat = i_f[iphi,:,:,:].astype(np.float32)
-        for i in range(nnodes):
-            X = dat[i,:,:]
-            X = (X - np.min(X))/(np.max(X)-np.min(X))
-            X = X[np.newaxis,:,:]
-            lx.append(X)
-            ly.append(nclass[i])
-            lp.append(1/len(fcls)/fcls[nclass[i]])
+    for fname in file_list:
+        with ad2.open(fname,'r') as f:
+            i_f = f.read('i_f')
+        i_f = np.moveaxis(i_f,1,2)
+
+        for iphi in range(i_f.shape[0]):
+            dat = i_f[iphi,:,:,:].astype(np.float32)
+            for i in range(nnodes):
+                X = dat[i,:,:]
+                X = (X - np.min(X))/(np.max(X)-np.min(X))
+                X = X[np.newaxis,:,:]
+                lx.append(X)
+                ly.append(nclass[i])
+                lp.append(1/len(fcls)/fcls[nclass[i]]/len(file_list))
     print (len(lx), len(ly))
     lx[0].shape, ly[0]
 
@@ -239,10 +249,12 @@ if __name__ == "__main__":
     validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
 
     # %%
-    vgg_based = torchvision.models.vgg19(pretrained=False)
+    vgg_based = torchvision.models.vgg19(pretrained=True)
 
+    # Modify to use a single channel (gray)
+    # vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    
     # Modify the last layer
-    vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
     number_features = vgg_based.classifier[6].in_features
     features = list(vgg_based.classifier.children())[:-1] # Remove last layer
     features.extend([torch.nn.Linear(number_features, num_classes)])
