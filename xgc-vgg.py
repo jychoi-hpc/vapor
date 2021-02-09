@@ -216,9 +216,11 @@ if __name__ == "__main__":
                 X = dat[i,:,:]
                 X = (X - np.min(X))/(np.max(X)-np.min(X))
                 X = X[np.newaxis,:,:]
+                X = np.vstack([X,X,X])
                 lx.append(X)
                 ly.append(nclass[i])
                 lp.append(1/len(fcls)/fcls[nclass[i]]/len(file_list))
+        break
     print (len(lx), len(ly))
     lx[0].shape, ly[0]
 
