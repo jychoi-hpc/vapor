@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
+from torch.utils.data import Dataset
+from PIL import Image, ImageFile
 
 from torchvision import datasets, models, transforms
 
@@ -81,6 +83,55 @@ def digitizing(x, nbins):
     idx = np.where(idx==nbins+1, 0, idx)
     return (idx, bins)
 
+class XGCFDataset(Dataset):
+    def __init__(self, expdir, step_list, nclass, shape):
+
+        nx, ny = shape
+
+        lx = list()
+        ly = list()
+        lp = list()
+        for istep in step_list:
+            fname = os.path.join(expdir, 'restart_dir/xgc.f0.%05d.bp'%istep)
+            logging.debug("Reading: %s"%(fname))
+            with ad2.open(fname,'r') as f:
+                i_f = f.read('i_f')
+            i_f = np.moveaxis(i_f,1,2)
+            i_f = i_f.astype(np.float32)
+            nphi, nnodes, nx, ny = i_f.shape
+
+            for iphi in range(nphi):
+                for i in range(nnodes):
+                    X = i_f[iphi,i,:,:]
+                    X = (X - np.min(X))/(np.max(X)-np.min(X))
+                    X = np.vstack([X[np.newaxis,:,:],X[np.newaxis,:,:],X[np.newaxis,:,:]])
+                    lx.append(X)
+                    ly.append(nclass[i])
+                    lp.append(1/len(fcls)/fcls[nclass[i]]/len(step_list))
+
+        self.X = np.array(lx)
+        self.y = np.array(ly)
+        mean = np.mean(self.X)
+        std = np.mean(self.y)
+
+        self.transform = transforms.Compose(
+            [
+                # transforms.Resize((nx, ny), Image.BICUBIC),
+                # transforms.ToTensor(),
+                transforms.Normalize(mean, std),
+            ]
+        )
+
+    def __getitem__(self, index):
+        i = index
+        X = self.transform(torch.tensor(self.X[i,:]))
+        y = torch.tensor(self.y[i])
+        #print ('X:', self.X.shape, torch.tensor(self.X).shape, X.shape, i)
+        return (X, y)
+
+    def __len__(self):
+        return len(self.X)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -90,6 +141,7 @@ if __name__ == "__main__":
     # parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
     # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
     parser.add_argument('--restart', help='restart', action='store_true')
+    parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     opt = parser.parse_args()
     print(opt)
 
@@ -196,53 +248,29 @@ if __name__ == "__main__":
     # %%
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
-
-    file_list = ['d3d_coarse_v2_4x/restart_dir/xgc.f0.00410.bp',\
-        'd3d_coarse_v2_4x/restart_dir/xgc.f0.00420.bp',\
-        'd3d_coarse_v2_4x/restart_dir/xgc.f0.00430.bp']
     
-    lx = list()
-    ly = list()
-    lp = list()
-    for fname in file_list:
-        print ("Reading: ", fname)
-        with ad2.open(fname,'r') as f:
-            i_f = f.read('i_f')
-        i_f = np.moveaxis(i_f,1,2)
-
-        for iphi in range(i_f.shape[0]):
-            dat = i_f[iphi,:,:,:].astype(np.float32)
-            for i in range(nnodes):
-                X = dat[i,:,:]
-                X = (X - np.min(X))/(np.max(X)-np.min(X))
-                X = X[np.newaxis,:,:]
-                X = np.vstack([X,X,X])
-                lx.append(X)
-                ly.append(nclass[i])
-                lp.append(1/len(fcls)/fcls[nclass[i]]/len(file_list))
-    print (len(lx), len(ly))
-    lx[0].shape, ly[0]
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, nclass, (40,40))
 
     # %%
     batch_size=opt.batch_size
-
-    dataset = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
-
+    # dataset = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
     training_data, validation_data = random_split(dataset, [int(len(dataset)*0.8), len(dataset)-int(len(dataset)*0.8)])
     logging.debug("Split: %d %d"%(len(training_data), len(validation_data))) 
 
-    p_training_data = list()
-    for _, y in training_data:
-        i = y.item()
-        p_training_data.append(1/len(fcls)/fcls[i])
+    p_training_data = np.zeros(len(training_data))
+    for i, (_, y) in enumerate(training_data):
+        k = y.item()
+        p_training_data[i] = 1.0/fcls[k]
+    p_training_data = p_training_data/np.sum(p_training_data)
 
-    p_validation_data = list()
-    for _, y in validation_data:
-        i = y.item()
-        p_validation_data.append(1/len(fcls)/fcls[i])
+    p_validation_data = np.zeros(len(validation_data))
+    for i, (_, y) in enumerate(validation_data):
+        k = y.item()
+        p_validation_data[i] = 1.0/fcls[k]
+    p_validation_data = p_validation_data/np.sum(p_validation_data)
 
-    training_sample_size = len(fcls)*batch_size*100
-    validation_sample_size = len(fcls)*batch_size*10
+    training_sample_size = len(fcls)*batch_size*80
+    validation_sample_size = len(fcls)*batch_size*20
     logging.debug("Sample: %d %d"%(training_sample_size, validation_sample_size)) 
     sampler=WeightedRandomSampler(p_training_data, training_sample_size, replacement=True)
     training_loader = DataLoader(training_data, batch_size=batch_size, pin_memory=True, sampler=sampler, drop_last=True)
