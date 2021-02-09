@@ -220,7 +220,6 @@ if __name__ == "__main__":
                 lx.append(X)
                 ly.append(nclass[i])
                 lp.append(1/len(fcls)/fcls[nclass[i]]/len(file_list))
-        break
     print (len(lx), len(ly))
     lx[0].shape, ly[0]
 
