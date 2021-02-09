@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
 from torch.utils.data import Dataset
 from PIL import Image, ImageFile
+from skimage.transform import resize
 
 from torchvision import datasets, models, transforms
 
@@ -84,8 +85,9 @@ def digitizing(x, nbins):
     return (idx, bins)
 
 class XGCFDataset(Dataset):
-    def __init__(self, expdir, step_list, nclass, shape):
+    def __init__(self, expdir, step_list, nchannel, nclass, shape):
 
+        self.nchannel = nchannel
         self.nx, self.ny = shape
 
         lx = list()
@@ -103,7 +105,8 @@ class XGCFDataset(Dataset):
                 for i in range(nnodes):
                     X = i_f[iphi,i,:,:]
                     X = (X - np.min(X))/(np.max(X)-np.min(X))
-                    #X = np.vstack([X[np.newaxis,:,:],X[np.newaxis,:,:],X[np.newaxis,:,:]])
+                    # X = X[np.newaxis,:,:]
+                    # X = np.vstack([X,X,X])
                     lx.append(X)
                     ly.append(nclass[i])
         
@@ -114,8 +117,8 @@ class XGCFDataset(Dataset):
 
         self.transform = transforms.Compose(
             [
-                transforms.ToPILImage(),
-                transforms.Resize((nx, ny), Image.BICUBIC),
+                # transforms.ToPILImage(),
+                # transforms.Resize((nx, ny), Image.BICUBIC),
                 # transforms.ToTensor(),
                 # transforms.Normalize(mean, std),
             ]
@@ -124,13 +127,15 @@ class XGCFDataset(Dataset):
     def __getitem__(self, index):
         i = index
         X  = self.X[i,:]
-        #im = Image.fromarray(X)
-        im = self.transform(X)
-        im = transforms.Resize((self.nx, self.ny), Image.BICUBIC)(im)
-        X = np.array(im)
+        X = resize(X, (self.nx, self.ny), order=0, anti_aliasing=False)
+        # (2021/02) Mnay problems for using PIL with numpy
+        # im = transforms.ToPILImage()(X)
+        # im = transforms.Resize((self.nx, self.ny), Image.BICUBIC)(im)
+        # X = np.array(im)
         X = transforms.ToTensor()(X)
         X = transforms.Normalize(self.mean, self.std)(X)
-        X = torch.cat([X, X, X])
+        if self.nchannel == 3:
+            X = torch.cat([X, X, X])
         y = torch.tensor(self.y[i])
         # print ('X:', X.shape, X.min(), X.max(), i)
         # import pdb; pdb.set_trace()
@@ -149,6 +154,8 @@ if __name__ == "__main__":
     # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
     parser.add_argument('--restart', help='restart', action='store_true')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
+    parser.add_argument('--classtype', help='num. of classes', default='1090')
+    parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
     opt = parser.parse_args()
     print(opt)
 
@@ -189,61 +196,60 @@ if __name__ == "__main__":
     print (i_f.shape)    
 
     # %%
-    """
-    ## 20 classes
-    fmax = list()
-    for i in range(len(psi_surf)):
-        n = surf_len[i]
-        k = surf_idx[i,:n]-1
-        fmax.append(np.max(i_f[:,k,:,:]))
+    if opt.classtype == '20':
+        ## 20 classes
+        fmax = list()
+        for i in range(len(psi_surf)):
+            n = surf_len[i]
+            k = surf_idx[i,:n]-1
+            fmax.append(np.max(i_f[:,k,:,:]))
 
-    lx = np.log10(fmax)
-    # plt.figure(figsize=[16,4])
-    # plt.plot(lx,'-x')
+        lx = np.log10(fmax)
+        # plt.figure(figsize=[16,4])
+        # plt.plot(lx,'-x')
 
-    bins = np.linspace(min(lx), max(lx), 9)
-    inds = np.digitize(lx, bins)
-    # for i in range(len(lx)):
-    #     plt.text(i, lx[i], str(inds[i]))
-        
-    nclass = np.zeros(len(rz), dtype=np.int)
-    for i in range(len(psi_surf)):
-        n = surf_len[i]
-        k = surf_idx[i,:n]-1
-        nclass[k] = inds[i]*2
+        bins = np.linspace(min(lx), max(lx), 9)
+        inds = np.digitize(lx, bins)
+        # for i in range(len(lx)):
+        #     plt.text(i, lx[i], str(inds[i]))
+            
+        nclass = np.zeros(len(rz), dtype=np.int)
+        for i in range(len(psi_surf)):
+            n = surf_len[i]
+            k = surf_idx[i,:n]-1
+            nclass[k] = inds[i]*2
 
-    for i in range(len(rz)):
-        if r[i]<r[0]:
-            nclass[i] = nclass[i]+1
-    """
+        for i in range(len(rz)):
+            if r[i]<r[0]:
+                nclass[i] = nclass[i]+1
+    
+    if opt.classtype == '210':
+        ## 202 classes
+        nclass = np.zeros(len(rz), dtype=np.int)
+        for i in range(len(psi_surf)):
+            n = surf_len[i]
+            k = surf_idx[i,:n]-1
+            nclass[k] = i*2
 
-    """
-    ## 202 classes
-    nclass = np.zeros(len(rz), dtype=np.int)
-    for i in range(len(psi_surf)):
-        n = surf_len[i]
-        k = surf_idx[i,:n]-1
-        nclass[k] = i*2
+        for i in range(len(rz)):
+            if r[i]>r[0]: 
+                nclass[i] = nclass[i]+1
 
-    for i in range(len(rz)):
-        if r[i]>r[0]: 
-            nclass[i] = nclass[i]+1
-    """
+    if opt.classtype == '1090':
+        ## 1088 classes
+        x = np.where(theta==-10, np.nan, theta)
+        theta_id, theta_bins = digitizing(x, 32)
 
-    ## 1088 classes
-    x = np.where(theta==-10, np.nan, theta)
-    theta_id, theta_bins = digitizing(x, 32)
+        node_psi = np.zeros_like(theta)
+        node_psi[:] = np.nan
+        for i in range(len(psi_surf)):
+            n = surf_len[i]
+            k = surf_idx[i,:n]
+            node_psi[k] = psi_surf[i]
 
-    node_psi = np.zeros_like(theta)
-    node_psi[:] = np.nan
-    for i in range(len(psi_surf)):
-        n = surf_len[i]
-        k = surf_idx[i,:n]
-        node_psi[k] = psi_surf[i]
+        psi_id, psi_bins = digitizing(node_psi, 32)
 
-    psi_id, psi_bins = digitizing(node_psi, 32)
-
-    nclass = psi_id*33+theta_id
+        nclass = psi_id*33+theta_id
 
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
@@ -256,7 +262,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, nclass, (256,256))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (256,256))
 
     # %%
     batch_size=opt.batch_size
@@ -286,10 +292,11 @@ if __name__ == "__main__":
     validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
 
     # %%
-    vgg_based = torchvision.models.vgg19(pretrained=False)
+    vgg_based = torchvision.models.vgg19(pretrained=True)
 
-    # Modify to use a single channel (gray)
-    # vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    if opt.nchannel == 1:
+        # Modify to use a single channel (gray)
+        vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
     
     # Modify the last layer
     number_features = vgg_based.classifier[6].in_features
@@ -341,8 +348,9 @@ if __name__ == "__main__":
             
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
+            print ('model:', model.features[0].weight.sum().item())
             if (i+1) % 100 == 0:
-                print ('model:', model.features[0].weight.sum().item())
+                # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
         
         avg_loss = loss_train / training_sample_size
@@ -381,5 +389,5 @@ if __name__ == "__main__":
         print(preds)
         print()    
 
-        torch.save(model, 'xgc-vgg19-%d.torch'%num_classes)
+        torch.save(model, 'xgc-vgg19-ch%d-%d.torch'%(opt.nchannel, num_classes))
         print('Done.')
