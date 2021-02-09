@@ -86,11 +86,10 @@ def digitizing(x, nbins):
 class XGCFDataset(Dataset):
     def __init__(self, expdir, step_list, nclass, shape):
 
-        nx, ny = shape
+        self.nx, self.ny = shape
 
         lx = list()
         ly = list()
-        lp = list()
         for istep in step_list:
             fname = os.path.join(expdir, 'restart_dir/xgc.f0.%05d.bp'%istep)
             logging.debug("Reading: %s"%(fname))
@@ -104,29 +103,37 @@ class XGCFDataset(Dataset):
                 for i in range(nnodes):
                     X = i_f[iphi,i,:,:]
                     X = (X - np.min(X))/(np.max(X)-np.min(X))
-                    X = np.vstack([X[np.newaxis,:,:],X[np.newaxis,:,:],X[np.newaxis,:,:]])
+                    #X = np.vstack([X[np.newaxis,:,:],X[np.newaxis,:,:],X[np.newaxis,:,:]])
                     lx.append(X)
                     ly.append(nclass[i])
-                    lp.append(1/len(fcls)/fcls[nclass[i]]/len(step_list))
-
+        
         self.X = np.array(lx)
         self.y = np.array(ly)
-        mean = np.mean(self.X)
-        std = np.mean(self.y)
+        self.mean = np.mean(self.X)
+        self.std = np.std(self.y)
 
         self.transform = transforms.Compose(
             [
-                # transforms.Resize((nx, ny), Image.BICUBIC),
+                transforms.ToPILImage(),
+                transforms.Resize((nx, ny), Image.BICUBIC),
                 # transforms.ToTensor(),
-                transforms.Normalize(mean, std),
+                # transforms.Normalize(mean, std),
             ]
         )
 
     def __getitem__(self, index):
         i = index
-        X = self.transform(torch.tensor(self.X[i,:]))
+        X  = self.X[i,:]
+        #im = Image.fromarray(X)
+        im = self.transform(X)
+        im = transforms.Resize((self.nx, self.ny), Image.BICUBIC)(im)
+        X = np.array(im)
+        X = transforms.ToTensor()(X)
+        X = transforms.Normalize(self.mean, self.std)(X)
+        X = torch.cat([X, X, X])
         y = torch.tensor(self.y[i])
-        #print ('X:', self.X.shape, torch.tensor(self.X).shape, X.shape, i)
+        # print ('X:', X.shape, X.min(), X.max(), i)
+        # import pdb; pdb.set_trace()
         return (X, y)
 
     def __len__(self):
@@ -249,7 +256,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, nclass, (40,40))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, nclass, (256,256))
 
     # %%
     batch_size=opt.batch_size
@@ -279,7 +286,7 @@ if __name__ == "__main__":
     validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
 
     # %%
-    vgg_based = torchvision.models.vgg19(pretrained=True)
+    vgg_based = torchvision.models.vgg19(pretrained=False)
 
     # Modify to use a single channel (gray)
     # vgg_based.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
@@ -290,6 +297,8 @@ if __name__ == "__main__":
     features.extend([torch.nn.Linear(number_features, num_classes)])
     vgg_based.classifier = torch.nn.Sequential(*features)
     model = vgg_based
+    for name, param in model.named_parameters():
+        print (name, param.shape, param.requires_grad)
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=opt.lr, momentum=0.9)
@@ -318,7 +327,6 @@ if __name__ == "__main__":
             inputs = inputs.to(device)
             labels = labels.to(device)
             ns = torch.normal(mean=0.0, std=inputs*0.01)
-            #print (model.features[0].weight.sum().item())
             
             optimizer.zero_grad()
             
@@ -334,6 +342,7 @@ if __name__ == "__main__":
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
             if (i+1) % 100 == 0:
+                print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
         
         avg_loss = loss_train / training_sample_size
