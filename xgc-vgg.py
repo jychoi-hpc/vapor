@@ -316,8 +316,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = opt.n_epochs
 
+    modlefile = 'xgc-vgg19-ch%d-%d.torch'%(opt.nchannel, num_classes)
     if opt.restart:
-        model = torch.load('xgc-vgg19.torch')
+        model = torch.load(modlefile)
     model.to(device)
     since = time.time()    
     for epoch in range(num_epochs):
@@ -389,5 +390,5 @@ if __name__ == "__main__":
         print(preds)
         print()    
 
-        torch.save(model, 'xgc-vgg19-ch%d-%d.torch'%(opt.nchannel, num_classes))
+        torch.save(model, modlefile)
         print('Done.')
