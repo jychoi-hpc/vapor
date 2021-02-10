@@ -355,7 +355,7 @@ if __name__ == "__main__":
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
             if (i+1) % 1000 == 0:
-                print('Acc: ', torch.mean(preds == labels.data))
+                print('Acc: ', torch.sum(preds == labels.data)/len(preds))
                 print("Label:")
                 print(labels)
                 print("Pred:")
