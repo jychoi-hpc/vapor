@@ -155,8 +155,14 @@ if __name__ == "__main__":
     # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
     parser.add_argument('--restart', help='restart', action='store_true')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
-    parser.add_argument('--classtype', help='num. of classes', default='1090')
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
+    group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
+    group.add_argument('--N1000', help='N1000 model', action='store_const', dest='model', const='N1000')
+    parser.set_defaults(model='N20')
+
     opt = parser.parse_args()
     print(opt)
 
@@ -197,7 +203,7 @@ if __name__ == "__main__":
     print (i_f.shape)    
 
     # %%
-    if opt.classtype == '20':
+    if opt.model == 'N20':
         ## 20 classes
         fmax = list()
         for i in range(len(psi_surf)):
@@ -224,7 +230,7 @@ if __name__ == "__main__":
             if r[i]<r[0]:
                 nclass[i] = nclass[i]+1
     
-    if opt.classtype == '210':
+    if opt.model == 'N200':
         ## 202 classes
         nclass = np.zeros(len(rz), dtype=np.int)
         for i in range(len(psi_surf)):
@@ -236,7 +242,7 @@ if __name__ == "__main__":
             if r[i]>r[0]: 
                 nclass[i] = nclass[i]+1
 
-    if opt.classtype == '1090':
+    if opt.model == 'N1000':
         ## 1088 classes
         x = np.where(theta==-10, np.nan, theta)
         theta_id, theta_bins = digitizing(x, 32)
@@ -355,7 +361,7 @@ if __name__ == "__main__":
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
             if (i+1) % 1000 == 0:
-                print('Acc: ', torch.sum(preds == labels.data)/len(preds))
+                print('Acc: ', torch.sum(preds == labels.data).item()/len(preds))
                 print("Label:")
                 print(labels)
                 print("Pred:")
