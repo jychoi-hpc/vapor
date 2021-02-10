@@ -116,7 +116,6 @@ class XGCFDataset(Dataset):
         self.std = np.std(self.X)
         logging.debug("Dataset (mean, std): %f %f"%(self.mean, self.std))
 
-
         self.transform = transforms.Compose(
             [
                 # transforms.ToPILImage(),
@@ -356,9 +355,10 @@ if __name__ == "__main__":
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
             if (i+1) % 1000 == 0:
-                print("Label")
+                print('Acc: ', torch.mean(preds == labels.data))
+                print("Label:")
                 print(labels)
-                print("Pred")
+                print("Pred:")
                 print(preds)
 
         avg_loss = loss_train / training_sample_size
@@ -391,9 +391,9 @@ if __name__ == "__main__":
         print("Avg acc (train): {:.4f}".format(avg_acc))
         print("Avg loss (val): {:.4f}".format(avg_loss_val))
         print("Avg acc (val): {:.4f}".format(avg_acc_val))
-        print("Label")
+        print("Label:")
         print(labels)
-        print("Pred")
+        print("Pred:")
         print(preds)
         print()    
 
