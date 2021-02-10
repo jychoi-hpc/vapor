@@ -353,7 +353,12 @@ if __name__ == "__main__":
             if (i+1) % 100 == 0:
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
-        
+            if (i+1) % 1000 == 0:
+                print("Label")
+                print(labels)
+                print("Pred")
+                print(preds)
+
         avg_loss = loss_train / training_sample_size
         avg_acc = acc_train.double() / training_sample_size
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Epoch', epoch_loss, epoch_acc))
