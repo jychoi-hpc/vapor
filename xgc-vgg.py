@@ -262,7 +262,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (256,256))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (64,64))
 
     # %%
     batch_size=opt.batch_size
@@ -349,7 +349,7 @@ if __name__ == "__main__":
             
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
-            print ('model:', model.features[0].weight.sum().item())
+            # print ('model:', model.features[0].weight.sum().item())
             if (i+1) % 100 == 0:
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
