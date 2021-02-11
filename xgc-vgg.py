@@ -88,7 +88,7 @@ class XGCFDataset(Dataset):
     def __init__(self, expdir, step_list, nchannel, nclass, shape):
 
         self.nchannel = nchannel
-        self.nx, self.ny = shape
+        self.hr_height, self.hr_height = shape
 
         lx = list()
         ly = list()
@@ -119,7 +119,7 @@ class XGCFDataset(Dataset):
         self.transform = transforms.Compose(
             [
                 # transforms.ToPILImage(),
-                # transforms.Resize((nx, ny), Image.BICUBIC),
+                # transforms.Resize((hr_height, hr_height), Image.BICUBIC),
                 # transforms.ToTensor(),
                 # transforms.Normalize(mean, std),
             ]
@@ -129,10 +129,10 @@ class XGCFDataset(Dataset):
         i = index
         X  = self.X[i,:]
         ## 0: Nearest-neighbor, 1: Bi-linear, 2: Bi-quadratic, 3: Bi-cubic
-        X = resize(X, (self.nx, self.ny), order=3, anti_aliasing=False) 
+        X = resize(X, (self.hr_height, self.hr_height), order=3, anti_aliasing=False) 
         # (2021/02) Mnay problems for using PIL with numpy
         # im = transforms.ToPILImage()(X)
-        # im = transforms.Resize((self.nx, self.ny), Image.BICUBIC)(im)
+        # im = transforms.Resize((self.hr_height, self.hr_height), Image.BICUBIC)(im)
         # X = np.array(im)
         X = transforms.ToTensor()(X)
         X = transforms.Normalize(self.mean, self.std)(X)
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument('--restart', help='restart', action='store_true')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
-    parser.add_argument("--nx", type=int, default=64, help="nx")
+    parser.add_argument("--hr_height", type=int, default=256, help="hr_height")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
     group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (opt.nx, opt.nx))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (opt.hr_height, opt.hr_height))
 
     # %%
     batch_size=opt.batch_size
