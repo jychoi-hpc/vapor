@@ -128,7 +128,8 @@ class XGCFDataset(Dataset):
     def __getitem__(self, index):
         i = index
         X  = self.X[i,:]
-        X = resize(X, (self.nx, self.ny), order=0, anti_aliasing=False)
+        ## 0: Nearest-neighbor, 1: Bi-linear, 2: Bi-quadratic, 3: Bi-cubic
+        X = resize(X, (self.nx, self.ny), order=3, anti_aliasing=False) 
         # (2021/02) Mnay problems for using PIL with numpy
         # im = transforms.ToPILImage()(X)
         # im = transforms.Resize((self.nx, self.ny), Image.BICUBIC)(im)
@@ -269,7 +270,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (64,64))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (256,256))
 
     # %%
     batch_size=opt.batch_size
@@ -359,7 +360,7 @@ if __name__ == "__main__":
             # print ('model:', model.features[0].weight.sum().item())
             if (i+1) % 100 == 0:
                 # print ('model:', model.features[0].weight.sum().item())
-                print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(training_loader), 'Train', loss.item()))
+                print('[Epoch {:d}/{:d}] [Batch {:d}/{:d}] {} loss: {:.4f}'.format(epoch, num_epochs, i, len(training_loader), 'Train', loss.item()))
             if (i+1) % 1000 == 0:
                 print('Acc: ', torch.sum(preds == labels.data).item()/len(preds))
                 print("Label:")
@@ -387,7 +388,7 @@ if __name__ == "__main__":
             loss_val += loss.item() * inputs.size(0)
             acc_val += torch.sum(preds == labels.data)
             if (i+1) % 100 == 0:
-                print('[{:d}/{:d}] {} loss: {:.4f}'.format(i, len(validation_loader), 'Test', loss.item()))
+                print('[Epoch {:d}/{:d}] [Batch {:d}/{:d}] {} loss: {:.4f}'.format(epoch, num_epochs, i, len(validation_loader), 'Test', loss.item()))
 
         avg_loss_val = loss_val / validation_sample_size
         avg_acc_val = acc_val.double() / validation_sample_size
