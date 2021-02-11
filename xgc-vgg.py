@@ -158,7 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
     parser.add_argument("--hr_height", type=int, default=256, help="hr_height")
-    parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+    parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
     group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
