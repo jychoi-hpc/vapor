@@ -157,13 +157,13 @@ if __name__ == "__main__":
     parser.add_argument('--restart', help='restart', action='store_true')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
-
+    parser.add_argument("--hr_height", type=int, default=256, help="high res. image height")
+    parser.add_argument("--hr_width", type=int, default=256, help="high res. image width")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
     group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
     group.add_argument('--N1000', help='N1000 model', action='store_const', dest='model', const='N1000')
     parser.set_defaults(model='N20')
-
     opt = parser.parse_args()
     print(opt)
 
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (256,256))
+    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (opt.hr_height, opt.hr_width))
 
     # %%
     batch_size=opt.batch_size
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = opt.n_epochs
 
-    modlefile = 'xgc-vgg19-ch%d-%d.torch'%(opt.nchannel, num_classes)
+    modlefile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
     if opt.restart:
         model = torch.load(modlefile)
     model.to(device)
