@@ -354,10 +354,11 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
 
     da_list = list()
     lb_list = list()
-    for i in range(iphi, iphi+nphi):
+    ## i_f is already subset
+    for i in range(nphi):
         for j in inodes:
             da_list.append(i_f[i,j,:,:])
-            lb_list.append((istep,i,j))
+            lb_list.append((istep,i+iphi,j))
     
     Z0 = np.array(da_list)
     zlb = np.array(lb_list)

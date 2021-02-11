@@ -114,7 +114,7 @@ class XGCFDataset(Dataset):
         self.y = np.array(ly)
         self.mean = np.mean(self.X)
         self.std = np.std(self.X)
-        logging.debug("Dataset (mean, std): %f %f"%(self.mean, self.std))
+        logging.debug("Dataset mean, std: %f %f"%(self.mean, self.std))
 
         self.transform = transforms.Compose(
             [
