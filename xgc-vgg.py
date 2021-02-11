@@ -323,9 +323,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_epochs = opt.n_epochs
 
-    modlefile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
+    modelfile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
     if opt.restart:
-        model = torch.load(modlefile)
+        model = torch.load(modelfile)
     model.to(device)
     since = time.time()    
     for epoch in range(num_epochs):
@@ -366,6 +366,9 @@ if __name__ == "__main__":
                 print(labels)
                 print("Pred:")
                 print(preds)
+            if (i+1) % 10000 == 0:
+                print('Saving:', modelfile)
+                torch.save(model, modelfile)
 
         avg_loss = loss_train / training_sample_size
         avg_acc = acc_train.double() / training_sample_size
@@ -388,6 +391,12 @@ if __name__ == "__main__":
             acc_val += torch.sum(preds == labels.data)
             if (i+1) % 100 == 0:
                 print('[Epoch {:d}/{:d}] [Batch {:d}/{:d}] {} loss: {:.4f}'.format(epoch, num_epochs, i, len(validation_loader), 'Test', loss.item()))
+            if (i+1) % 1000 == 0:
+                print('Acc: ', torch.sum(preds == labels.data).item()/len(preds))
+                print("Label:")
+                print(labels)
+                print("Pred:")
+                print(preds)
 
         avg_loss_val = loss_val / validation_sample_size
         avg_acc_val = acc_val.double() / validation_sample_size
@@ -403,5 +412,5 @@ if __name__ == "__main__":
         print(preds)
         print()    
 
-        torch.save(model, modlefile)
+        torch.save(model, modelfile)
         print('Done.')

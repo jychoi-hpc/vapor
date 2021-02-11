@@ -62,8 +62,8 @@ hr_shape = (opt.hr_height, opt.hr_width)
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.channels, out_channels=opt.channels)
 discriminator = Discriminator(input_shape=(opt.channels, *hr_shape))
-modlefile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
-feature_extractor = XGCFeatureExtractor(modlefile)
+modelfile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
+feature_extractor = XGCFeatureExtractor(modelfile)
 
 # Set feature extractor to inference mode
 feature_extractor.eval()
