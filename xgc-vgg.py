@@ -158,6 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
     parser.add_argument("--hr_height", type=int, default=256, help="hr_height")
+    parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
     group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
@@ -293,10 +294,10 @@ if __name__ == "__main__":
     validation_sample_size = len(fcls)*batch_size*20
     logging.debug("Sample: %d %d"%(training_sample_size, validation_sample_size)) 
     sampler=WeightedRandomSampler(p_training_data, training_sample_size, replacement=True)
-    training_loader = DataLoader(training_data, batch_size=batch_size, pin_memory=True, sampler=sampler, drop_last=True)
+    training_loader = DataLoader(training_data, batch_size=batch_size, pin_memory=True, sampler=sampler, drop_last=True, num_workers=opt.n_cpu)
 
     sampler2=WeightedRandomSampler(p_validation_data, validation_sample_size, replacement=True)
-    validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True)
+    validation_loader = DataLoader(validation_data, batch_size=batch_size, pin_memory=True, sampler=sampler2, drop_last=True, num_workers=opt.n_cpu)
 
     # %%
     vgg_based = torchvision.models.vgg19(pretrained=True)
