@@ -44,6 +44,7 @@ parser.add_argument("--channels", type=int, default=1, help="number of image cha
 parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples")
 parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between model checkpoints")
 parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
+parser.add_argument('--modelfile', help='modelfile')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
 group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
@@ -62,7 +63,7 @@ hr_shape = (opt.hr_height, opt.hr_width)
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.channels, out_channels=opt.channels)
 discriminator = Discriminator(input_shape=(opt.channels, *hr_shape))
-modelfile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model)
+modelfile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
 feature_extractor = XGCFeatureExtractor(modelfile)
 
 # Set feature extractor to inference mode
