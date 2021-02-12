@@ -374,6 +374,7 @@ if __name__ == "__main__":
         avg_loss = loss_train / training_sample_size
         avg_acc = acc_train.double() / training_sample_size
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Epoch', epoch_loss, epoch_acc))
+        torch.save(model, modelfile)
         
         model.eval()    
         # Iterate over data.
