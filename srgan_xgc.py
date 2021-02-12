@@ -175,7 +175,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
             imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4)
             gen_hr = make_grid(gen_hr, nrow=1, normalize=True)
             imgs_lr = make_grid(imgs_lr, nrow=1, normalize=True)
-            img_grid = torch.cat((imgs_lr, gen_hr), -1)
+            imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
+            img_grid = torch.cat((imgs_lr, gen_hr, imgs_hr), -1)
             save_image(img_grid, "images-%s/%d.png" % (opt.dataset_name, batches_done), normalize=False)
 
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
