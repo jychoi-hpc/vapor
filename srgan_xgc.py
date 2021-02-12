@@ -14,6 +14,7 @@ import numpy as np
 import math
 import itertools
 import sys
+import logging
 
 import torchvision.transforms as transforms
 from torchvision.utils import save_image, make_grid
@@ -51,7 +52,13 @@ group.add_argument('--N200', help='N200 model', action='store_const', dest='mode
 group.add_argument('--N1000', help='N1000 model', action='store_const', dest='model', const='N1000')
 parser.set_defaults(model='N20')
 opt = parser.parse_args()
-print(opt)
+
+logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
+
+logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
+logging.debug("All settings used:") 
+for k,v in sorted(vars(opt).items()): 
+    logging.debug("\t{0}: {1}".format(k,v))
 
 os.makedirs("images-%s"%opt.dataset_name, exist_ok=True)
 os.makedirs("saved_models-%s"%opt.dataset_name, exist_ok=True)
