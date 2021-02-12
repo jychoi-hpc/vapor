@@ -10,7 +10,12 @@ class XGCFeatureExtractor(nn.Module):
         super(XGCFeatureExtractor, self).__init__()
         #vgg19_model = vgg19(pretrained=True)
         print("Loading '%s'"%modlefile)
-        vgg19_model = torch.load(modlefile)
+
+        if torch.cuda.is_available():
+            map_location=lambda storage, loc: storage.cuda()
+        else:
+            map_location='cpu'        
+        vgg19_model = torch.load(modlefile, map_location=map_location)
         self.feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
 
     def forward(self, img):

@@ -32,7 +32,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
 parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
 parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2_4x", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
+parser.add_argument("--batch_size", type=int, default=16, help="size of the batches")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
@@ -127,12 +127,14 @@ for epoch in range(opt.epoch, opt.n_epochs):
         loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
 
         # Content loss
-        # _gen_hr = torch.cat((gen_hr, gen_hr, gen_hr), dim=1)
-        # _imgs_hr = torch.cat((imgs_hr, imgs_hr, imgs_hr), dim=1)
-        # gen_features = feature_extractor(_gen_hr)
-        # real_features = feature_extractor(_imgs_hr)
-        gen_features = feature_extractor(gen_hr)
-        real_features = feature_extractor(imgs_hr)
+        if opt.nchannel == 3:
+            _gen_hr = torch.cat((gen_hr, gen_hr, gen_hr), dim=1)
+            _imgs_hr = torch.cat((imgs_hr, imgs_hr, imgs_hr), dim=1)
+            gen_features = feature_extractor(_gen_hr)
+            real_features = feature_extractor(_imgs_hr)
+        else:
+            gen_features = feature_extractor(gen_hr)
+            real_features = feature_extractor(imgs_hr)
         loss_content = criterion_content(gen_features, real_features.detach())
         #loss_content = criterion_content(gen_hr, imgs_hr)
 
