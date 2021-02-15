@@ -55,7 +55,7 @@ def colorbar(mappable):
     plt.sca(last_axes)
     return cbar
 
-def dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
+def xdowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
     fig = plt.figure(figsize=[12,6])
     
     ax = plt.subplot(1,3,1)
@@ -104,6 +104,115 @@ def dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
     
     return fname
 
+def dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq, save=True):
+    fig = plt.figure(figsize=[12,8], constrained_layout=False)
+    fig.suptitle(title, fontsize=14, y=0.97)
+    gs = fig.add_gridspec(2, 4, width_ratios=[1,1,1,1])
+
+    ax = fig.add_subplot(gs[:, 0])
+    im = plt.tricontourf(trimesh, fsum)
+    divider = make_axes_locatable(ax)
+    #cax = divider.append_axes("right", size="10%", pad=0.05)
+    #clb = plt.colorbar(im, cax=cax)
+    clb = plt.colorbar(im, orientation='horizontal', pad=0.01)
+    clb.ax.set_title('log10(max)', fontsize=10)
+    clb.ax.set_xticklabels(clb.ax.get_xticklabels(),rotation=90)
+    plt.axis('scaled')
+    plt.axis('off')
+    #plt.triplot(trimesh, alpha=0.3, c='0.3')
+    plt.scatter(r[inode], z[inode], c='r', marker='x', s=80)
+
+    nx, ny = Z0.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+    
+    ax = fig.add_subplot(gs[0, 1])
+    im = plt.imshow(Z0, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    plt.contour(X, Y, Z0, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('f0')
+    plt.axis('scaled')
+    plt.axis('off')
+
+    ax = fig.add_subplot(gs[0, 3])
+    im = plt.imshow(N0, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    #plt.contour(X, Y, N0, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('f0 nonadia n0')
+    plt.axis('scaled')
+    plt.axis('off')
+
+#     ax = fig.add_subplot(gs[0, 3])
+#     im = plt.imshow(T0, origin='lower')
+#     plt.colorbar(im, orientation='horizontal', pad=0.01)
+#     plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+#     #plt.contour(X, Y, T0, levels=5, colors='w', alpha=0.3, origin='lower')
+#     plt.title('f0 nonadia turb')
+#     plt.axis('scaled')
+#     plt.axis('off')
+
+    ax = fig.add_subplot(gs[0, 2])
+    im = plt.imshow(T0, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    #plt.contour(X, Y, T0, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('den')
+    plt.axis('scaled')
+    plt.axis('off')
+
+
+    ax = fig.add_subplot(gs[1, 1])
+    im = plt.imshow(Z1, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    plt.contour(X, Y, Z1, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('f0 (recon)')
+    plt.axis('scaled')
+    plt.axis('off')
+
+    ax = fig.add_subplot(gs[1, 3])
+    im = plt.imshow(N1, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    #plt.contour(X, Y, N1, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('f0 nonadia n0 (recon)')
+    plt.axis('scaled')
+    plt.axis('off')
+
+#     ax = fig.add_subplot(gs[1, 3])
+#     im = plt.imshow(T1, origin='lower')
+#     plt.colorbar(im, orientation='horizontal', pad=0.01)
+#     plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+#     #plt.contour(X, Y, T1, levels=5, colors='w', alpha=0.3, origin='lower')
+#     plt.title('f0 nonadia turb (recon)')
+#     plt.axis('scaled')
+#     plt.axis('off')
+
+    ax = fig.add_subplot(gs[1, 2])
+    im = plt.imshow(T1, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    #plt.contour(X, Y, T1, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title('den (recon)')
+    plt.axis('scaled')
+    plt.axis('off')
+
+
+    fname = '%s/%06d.jpg'%(outdir,seq)
+    #if inode%100 == 0: print (fname)
+    #set_size(fig, (8, 6))
+    #plt.savefig(fname, bbox_inches='tight')
+    ## (2021/02) not working
+    # plt.savefig(fname, bbox_inches='tight', pad_inches=1.0) 
+    if save:
+        plt.savefig(fname)
+        plt.close()
+    
+    return fname
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('exp', help='exp')
@@ -131,6 +240,7 @@ if __name__ == "__main__":
 
     r = rz[:,0]
     z = rz[:,1]
+    trimesh = tri.Triangulation(r, z, conn)
     print (nnodes)
 
     bl = np.zeros_like(nextnode, dtype=bool)
@@ -142,26 +252,44 @@ if __name__ == "__main__":
 
     not_in_surf=np.arange(len(nextnode))[~bl]
 
-    with ad2.open('%s/restart_dir/xgc.f0.00420.bp'%exp,'r') as f:
-        i_f = f.read('i_f')
-    i_f = np.moveaxis(i_f,1,2)
-    print (i_f.shape)
+#     with ad2.open('%s/restart_dir/xgc.f0.00420.bp'%exp,'r') as f:
+#         i_f = f.read('i_f')
+#     i_f = np.moveaxis(i_f,1,2)
+#     print (i_f.shape)
 
-    with ad2.open('recon.bp','r') as f:
-        X0 = f.read('i_f_recon')
-    print (X0.shape)
+#     with ad2.open('%s-recon.bp'%exp,'r') as f:
+#         X0 = f.read('i_f_recon')
+#     print (X0.shape)
+
+    with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, 420), 'r') as f:
+        i_f = f.read('i_f')
+    f0_f = np.moveaxis(i_f, 2, 1).copy()
+
+    with ad2.open('%s-recon.bp'%exp, 'r') as f:
+        f0_g = f.read('i_f_recon')
+    print (f0_f.shape, f0_g.shape)
+
+    with ad2.open('%s-physics1.bp'%exp, 'r') as f:
+        den_f = f.read('den_f')
+        den_g = f.read('den_g')
+
+    with ad2.open('%s-physics3.bp'%exp, 'r') as f:
+        fn_n0_all_f = f.read('fn_n0_all_f')
+        fn_n0_all_g = f.read('fn_n0_all_g')
+        fn_turb_all_f = f.read('fn_turb_all_f')
+        fn_turb_all_g = f.read('fn_turb_all_g')
+        
+    print (den_f.shape, fn_n0_all_f.shape, fn_turb_all_f.shape)
 
     outdir = '%s-%s'%(args.prefix,exp)
     print ('outdir:', outdir)
     os.makedirs(outdir, exist_ok=True)
 
-    trimesh = tri.Triangulation(r, z, conn)
-
     if args.grey:    
-        for iphi in range(1): #,i_f.shape[0]):
-            for inode in range(i_f.shape[1]):
+        for iphi in range(1): #,f0_f.shape[0]):
+            for inode in range(f0_f.shape[1]):
                 #print (iphi, inode)
-                X  = i_f[iphi,inode,:,:]
+                X  = f0_f[iphi,inode,:,:]
                 X = (X-X.min())/(X.max()-X.min())*255
                 X = X.astype(np.float32).copy()
 
@@ -176,31 +304,49 @@ if __name__ == "__main__":
         with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor:
             future_list = list()
             seq = 0
-            for iphi in range(1): #,i_f.shape[0]):
-                #fsum = np.mean(i_f[iphi,:], axis=(1,2))
-                fsum = np.log10(np.max(i_f[iphi,:], axis=(1,2)))
+            for iphi in range(1): #,f0_f.shape[0]):
+                #fsum = np.mean(f0_f[iphi,:], axis=(1,2))
+                fsum = np.log10(np.max(f0_f[iphi,:], axis=(1,2)))
                 for i in tqdm(range(min(len(surf_idx), args.onlyn))):
                     for j in range(surf_len[i]):
                         inode = surf_idx[i,j]-1
-                        Z  = i_f[iphi,inode,:,:]
-                        Zbar = X0[iphi,inode,:,:]
+                        
+                        Z0 = f0_f[iphi,inode,:,:]
+                        Z1 = f0_g[iphi,inode,:,:]
+                        N0 = fn_n0_all_f[iphi,inode,:,:]
+                        N1 = fn_n0_all_g[iphi,inode,:,:]
+                        #T0 = fn_turb_all_f[iphi,inode,:,:]
+                        #T1 = fn_turb_all_g[iphi,inode,:,:]
+                        T0 = den_f[iphi,inode,:,:]
+                        T1 = den_g[iphi,inode,:,:]
+
+
                         title = 'node: %d (surfid: %d)'%(inode,i)
                         if not args.nofuture: 
-                            future = executor.submit(dowork, Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                            future = executor.submit(dowork, Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                             future_list.append(future)
                         else:
-                            dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                            dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                         seq += 1
+                
+                ub = min(len(not_in_surf), args.onlyn)
+                for inode in tqdm(not_in_surf[:ub]):
+                    Z0 = f0_f[iphi,inode,:,:]
+                    Z1 = f0_g[iphi,inode,:,:]
+                    N0 = fn_n0_all_f[iphi,inode,:,:]
+                    N1 = fn_n0_all_g[iphi,inode,:,:]
+                    #T0 = fn_turb_all_f[iphi,inode,:,:]
+                    #T1 = fn_turb_all_g[iphi,inode,:,:]
+                    T0 = den_f[iphi,inode,:,:]
+                    T1 = den_g[iphi,inode,:,:]
 
-                for inode in tqdm(not_in_surf):
-                    Z  = i_f[iphi,inode,:,:]
-                    Zbar = X0[iphi,inode,:,:]
+
                     title = 'node: %d (surfid: %d)'%(inode,-1)
                     if not args.nofuture: 
-                        future = executor.submit(dowork, Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                        future = executor.submit(dowork, Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                         future_list.append(future)
                     else:
-                        dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                        dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                     seq += 1
 
 
