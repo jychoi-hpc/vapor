@@ -220,6 +220,7 @@ if __name__ == "__main__":
     parser.add_argument('--grey', help='grey', action='store_true')
     parser.add_argument('--onlyn', type=int, help='onlyn', default=10000000)
     parser.add_argument('--nofuture', help='nofuture', action='store_true')
+    parser.add_argument('--nworkers', type=int, help='nworkers', default=32)
     args = parser.parse_args()
 
     exp = args.exp #'d3d_coarse_v2_4x'
@@ -301,7 +302,7 @@ if __name__ == "__main__":
 
                 if inode%1000 == 0: print (fname)
     else:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=32) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
             future_list = list()
             seq = 0
             for iphi in range(1): #,f0_f.shape[0]):
