@@ -97,6 +97,8 @@ def dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
     #if inode%100 == 0: print (fname)
     #set_size(fig, (8, 6))
     #plt.savefig(fname, bbox_inches='tight')
+    ## (2021/02) not working
+    # plt.savefig(fname, bbox_inches='tight', pad_inches=1.0) 
     plt.savefig(fname)
     plt.close()
     
@@ -119,7 +121,7 @@ if __name__ == "__main__":
         rz = f.read('rz')
         conn = f.read('nd_connect_list')
         #psi = f.read('psi')
-        #nextnode = f.read('nextnode')
+        nextnode = f.read('nextnode')
         #epsilon = f.read('epsilon')
         #node_vol = f.read('node_vol')
         #node_vol_nearest = f.read('node_vol_nearest')
@@ -130,6 +132,15 @@ if __name__ == "__main__":
     r = rz[:,0]
     z = rz[:,1]
     print (nnodes)
+
+    bl = np.zeros_like(nextnode, dtype=bool)
+    for i in range(len(surf_len)):
+        n = surf_len[i]
+        k = surf_idx[i,:n]-1
+        for j in k:
+            bl[j] = True
+
+    not_in_surf=np.arange(len(nextnode))[~bl]
 
     with ad2.open('%s/restart_dir/xgc.f0.00420.bp'%exp,'r') as f:
         i_f = f.read('i_f')
@@ -180,6 +191,18 @@ if __name__ == "__main__":
                         else:
                             dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
                         seq += 1
+
+                for inode in tqdm(not_in_surf):
+                    Z  = i_f[iphi,inode,:,:]
+                    Zbar = X0[iphi,inode,:,:]
+                    title = 'node: %d (surfid: %d)'%(inode,-1)
+                    if not args.nofuture: 
+                        future = executor.submit(dowork, Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                        future_list.append(future)
+                    else:
+                        dowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq)
+                    seq += 1
+
 
             if not args.nofuture:
                 for future in tqdm(future_list):
