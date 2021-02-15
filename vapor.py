@@ -574,7 +574,7 @@ def average_gradients(model):
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
-def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae'):
+def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False):
     """
     Reconstructing data based on a trained model
     """
@@ -591,6 +591,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
 
         lz = list()
         nbatch = 1
+        encode_list = list()
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
             _, nchannel, dim1, dim2 = valid_originals.shape
@@ -612,6 +613,9 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
                 valid_reconstructions = model._decoder(valid_quantize)
+                encode_list.append(valid_quantize)
+                #print (vq_encoded.shape, vq_output_eval.shape, valid_quantize.shape, valid_reconstructions.shape)
+
                 if model._grid is not None:
                     x = valid_reconstructions
                     x = x.permute(0, 2, 3, 1)
@@ -630,6 +634,10 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 lz.append((valid_reconstructions+drecon).cpu().data.numpy())
 
         Xbar = np.array(lz).reshape([-1,dim1,dim2])
+        Xenc = None
+        if return_encode:
+            Xenc = torch.cat(encode_list)
+            Xenc = Xenc.detach().cpu().numpy()
 
         ## Normalize
         xmin = np.min(Xbar, axis=(1,2))
@@ -640,7 +648,10 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         X0 = Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
     model.train(mode)
     
-    return (X0, Xbar, np.mean(X0, axis=(1,2)))
+    if not return_encode:
+        return (X0, Xbar, np.mean(X0, axis=(1,2)))
+    else:
+        return (X0, Xbar, np.mean(X0, axis=(1,2)), Xenc)
 
 def estimate_error(model, Zif, zmin, zmax, num_channels, modelname):
     """
