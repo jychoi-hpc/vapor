@@ -587,7 +587,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
             X = Zif[i:i+num_channels,:,:]
             N = X.astype(np.float32)
             lx.append(N)
-            ly.append(zlb[i])
+            # ly.append(zlb[i])
 
         lz = list()
         nbatch = 1
