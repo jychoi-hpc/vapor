@@ -348,7 +348,7 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
         logging.info (f"Reading: untwist is on")
         f_new = np.zeros_like(i_f)
         for i in range(len(f_new)):
-            od = nextnode_arr[i+iphi]
+            od = nextnode_arr[i+iphi,:]
             f_new[i,:,:,:] = i_f[i+iphi,od,:,:]
         i_f = f_new
 
@@ -359,7 +359,10 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
     for j in inodes:
         for i in range(nphi):
             da_list.append(i_f[i,j,:,:])
-            lb_list.append((istep,i+iphi,j))
+            k = j
+            if nextnode_arr is not None:
+                k = nextnode_arr[i+iphi,j]
+            lb_list.append((istep,i+iphi,k))
     
     Z0 = np.array(da_list)
     zlb = np.array(lb_list)
