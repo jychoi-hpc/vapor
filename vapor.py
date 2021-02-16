@@ -1734,8 +1734,11 @@ def main():
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
 
     if args.model == 'fno':
-        with ad2.open('enc.f0.00420.bp', 'r') as f:
-            Xenc = f.read('enc')
+        with ad2.open('d3d_coarse_v2-recon.bp', 'r') as f:
+            Xenc = f.read('i_f_recon').astype(np.float32)
+            if Xenc.shape[3] == 39:
+                Xenc = np.append(Xenc, Xenc[...,38:39], axis=3)
+                Xenc = np.append(Xenc, Xenc[:,:,38:39,:], axis=2)
 
         _, nx, ny = Z0.shape
         x = np.linspace(0, 1, nx, dtype=np.float32)
@@ -1747,10 +1750,12 @@ def main():
         lx = list()
         ly = list()
         for i in range(len(Zif)):
-            X = Xenc[i,:]
-            img = Image.fromarray(X)
-            img = img.resize((Z0.shape[-2],Z0.shape[-1]))
-            X = np.array(img)
+            ## (2021/02) 1st plane only for now
+            X = Xenc[0,i,:]
+            X = (X-np.min(X))/(np.max(X)-np.min(X))
+            # img = Image.fromarray(X)
+            # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
+            # X = np.array(img)
             lx.append(np.stack([X, xv, yv], axis=2))
             # lx.append(Xenc[i,:])
             ly.append(Zif[i,:])
