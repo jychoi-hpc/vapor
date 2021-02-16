@@ -30,22 +30,22 @@ import torch.nn.functional as F
 import torch
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2_4x", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=16, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
-parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation")
-parser.add_argument("--hr_height", type=int, default=256, help="high res. image height")
-parser.add_argument("--hr_width", type=int, default=256, help="high res. image width")
-parser.add_argument("--channels", type=int, default=1, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples")
-parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between model checkpoints")
-parser.add_argument('--nchannel', help='num. of channels', type=int, default=3)
-parser.add_argument('--modelfile', help='modelfile')
+parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
+parser.add_argument("--n_epochs", type=int, default=20, help="number of epochs of training (default: %(default)s)")
+parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2_4x", help="name of the dataset (default: %(default)s)")
+parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
+parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
+parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient (default: %(default)s)")
+parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient (default: %(default)s)")
+parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay (default: %(default)s)")
+parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation (default: %(default)s)")
+parser.add_argument("--hr_height", type=int, default=256, help="high res. image height (default: %(default)s)")
+parser.add_argument("--hr_width", type=int, default=256, help="high res. image width (default: %(default)s)")
+parser.add_argument("--channels", type=int, default=1, help="number of image channels (default: %(default)s)")
+parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples (default: %(default)s)")
+parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between model checkpoints (default: %(default)s)")
+parser.add_argument('--nchannel', type=int, default=3, help='num. of channels (default: %(default)s)')
+parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
 group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
@@ -60,8 +60,10 @@ logging.debug("All settings used:")
 for k,v in sorted(vars(opt).items()): 
     logging.debug("\t{0}: {1}".format(k,v))
 
-os.makedirs("images-%s"%opt.dataset_name, exist_ok=True)
-os.makedirs("saved_models-%s"%opt.dataset_name, exist_ok=True)
+imgdir = 'srgan_images-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
+modeldir = 'srgan_models-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
+os.makedirs(imgdir, exist_ok=True)
+os.makedirs(modeldir, exist_ok=True)
 
 cuda = torch.cuda.is_available()
 
@@ -90,8 +92,8 @@ if cuda:
 
 if opt.epoch != 0:
     # Load pretrained models
-    generator.load_state_dict(torch.load("saved_models/generator_%d.pth"))
-    discriminator.load_state_dict(torch.load("saved_models/discriminator_%d.pth"))
+    generator.load_state_dict(torch.load("%s/generator_%d.pth"%(modeldir, opt.epoch)))
+    discriminator.load_state_dict(torch.load("%s/discriminator_%d.pth"%(modeldir, opt.epoch)))
 
 # Optimizers
 optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
@@ -185,9 +187,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
             imgs_lr = make_grid(imgs_lr, nrow=1, normalize=True)
             imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
             img_grid = torch.cat((imgs_lr, imgs_hr, gen_hr), -1)
-            save_image(img_grid, "images-%s/%d.png" % (opt.dataset_name, batches_done), normalize=False)
+            save_image(img_grid, "%s/%d.png" % (imgdir, batches_done), normalize=False)
 
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
         # Save model checkpoints
-        torch.save(generator.state_dict(), "saved_models-%s/generator_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(discriminator.state_dict(), "saved_models-%s/discriminator_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (modeldir, epoch))
+        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (modeldir, epoch))
