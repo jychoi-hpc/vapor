@@ -13,9 +13,11 @@ import torchvision.transforms as transforms
 # Normalization parameters for pre-trained PyTorch models
 #mean = np.array([0.485, 0.456, 0.406])
 #std = np.array([0.229, 0.224, 0.225])
-mean = np.array([0.121008])
-std = np.array([0.217191])
+#mean = np.array([0.121008])
+#std = np.array([0.217191])
 #(0.1140694549214342, 0.11539442)
+mean = np.array([0.121008*2])
+std = np.array([0.217191])
 
 class ImageDataset(Dataset):
     def __init__(self, root, hr_shape):
