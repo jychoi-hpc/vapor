@@ -1774,7 +1774,7 @@ def main():
         validation_data = torch.utils.data.TensorDataset(X_test, y_test)
         full_data = torch.utils.data.TensorDataset(X_full, y_full)
 
-        train_loader = torch.utils.data.DataLoader(training_data, batch_size=batch_size, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=True)
         test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
         full_loader = torch.utils.data.DataLoader(full_data, batch_size=1, shuffle=False)
 
@@ -1783,8 +1783,8 @@ def main():
         ################################################################
         # configs
         ################################################################
-        ntrain = len(lx)
-        ntest = len(lx)
+        ntrain = len(train_loader)
+        ntest = len(test_loader)
         # modes = 12
         # width = 32
         step_size = 100
@@ -1832,6 +1832,7 @@ def main():
                     out = model(x)
                     # out = y_normalizer.decode(out)
 
+                    abs_err += nn.L1Loss()(y, out).item()
                     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
             train_mse/= ntrain
@@ -1839,7 +1840,7 @@ def main():
             rel_err /= ntest
 
             t2 = default_timer()
-            log(ep, t2-t1, train_mse, rel_err)
+            log(ep, t2-t1, train_mse, rel_err, abs_err)
 
             if (ep % args.checkpoint_interval == 0) and (rank == 0):
                 save_checkpoint(DIR, prefix, model, train_mse, ep)
@@ -1855,7 +1856,7 @@ def main():
             out1_list.append(out1.detach().cpu().numpy().copy())
         
         print (np.array(out_list).shape, np.array(out1_list).shape)
-        with ad2.open('fno.bp', 'w') as fw:
+        with ad2.open('d3d_coarse_v2-fno.bp', 'w') as fw:
             out = np.array(out_list)
             out1 = np.array(out1_list)
             shape, start, count = out.shape, [0,]*out.ndim, out.shape
