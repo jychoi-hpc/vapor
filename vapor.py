@@ -1749,9 +1749,9 @@ def main():
 
         lx = list()
         ly = list()
-        for i in range(len(Zif)):
-            ## (2021/02) 1st plane only for now
-            X = Xenc[0,i,:]
+        for i in range(len(zlb)):
+            iphi, inode = zlb[i,2:]
+            X = Xenc[iphi,inode,:]
             X = (X-np.min(X))/(np.max(X)-np.min(X))
             # img = Image.fromarray(X)
             # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
