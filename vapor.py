@@ -1873,6 +1873,9 @@ def main():
             fw.write('norm', out1, shape, start, count)
             fw.write('Zif', Zif, shape, start, count)
 
+            shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
+            fw.write('zlb', zlb, shape, start, count)
+
         return 0
     ## end of fno
 
