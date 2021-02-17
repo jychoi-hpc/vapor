@@ -1793,8 +1793,17 @@ def main():
         width = args.fno_width
         nlayers = args.fno_nlayers
 
-        model = Net2d(modes, width, nlayers=nlayers).to(device)
+        model = Net2d(modes, width, nlayers=nlayers)
         print(model.count_params())
+        istart = 1
+
+        _istart, _model, _dmodel = 0, None, None
+        if not args.overwrite: _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
+        if _model is not None:
+            istart = _istart + 1
+            model = _model
+        log ('istart:', istart)
+        model = model.to(device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
