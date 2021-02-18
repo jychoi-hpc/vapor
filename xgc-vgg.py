@@ -270,7 +270,7 @@ if __name__ == "__main__":
     dat = i_f[0,:,:,:].astype(np.float32)
     nnodes, nx, ny = dat.shape
     
-    dataset = XGCFDataset('d3d_coarse_v2_4x', opt.timesteps, opt.nchannel, nclass, (opt.hr_height, opt.hr_height))
+    dataset = XGCFDataset('d3d_coarse_v2', opt.timesteps, opt.nchannel, nclass, (opt.hr_height, opt.hr_height))
 
     # %%
     batch_size=opt.batch_size
