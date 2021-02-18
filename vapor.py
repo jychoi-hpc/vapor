@@ -1851,7 +1851,7 @@ def main():
                     x, y = x.to(device), y.to(device)
                     out = model(x)
                     # out = y_normalizer.decode(out)
-
+                    
                     abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
                     test_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
@@ -1875,7 +1875,8 @@ def main():
                     out_list.append(out.detach().cpu().numpy())
                     out1_list.append(out1.detach().cpu().numpy().copy())
 
-                    abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
+                    ## Need squeeze for batch size 1
+                    abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y.squeeze(), out)).item())
 
                 log('ABS:', abs_err)
                 
