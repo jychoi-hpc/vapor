@@ -1853,7 +1853,6 @@ def main():
                 #     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
             train_mse/= ntrain
-            abs_err /= ntest
             rel_err /= ntest
 
             t2 = default_timer()
