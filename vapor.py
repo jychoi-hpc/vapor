@@ -1767,7 +1767,7 @@ def main():
             Z = resize(Z, (nx,ny), order=0)
             ly.append(Z)
         
-        X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.1)
+        X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.3)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
 
         # X_train, y_train = rescale(X_train, grid), torch.tensor(y_train)
@@ -1842,17 +1842,20 @@ def main():
             abs_err = 0.0
             rel_err = 0.0
             with torch.no_grad():
-                abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
-                # for x, y in test_loader:
-                #     x, y = x.to(device), y.to(device)
+                x = out.detach().cpu().numpy()
+                y = y.detach().cpu().numpy()
+                #import pdb; pdb.set_trace()
+                #np.max(np.abs(x,y), dim=(2,3))
 
-                #     out = model(x)
-                #     # out = y_normalizer.decode(out)
+                for x, y in test_loader:
+                    x, y = x.to(device), y.to(device)
+                    out = model(x)
+                    # out = y_normalizer.decode(out)
 
-                #     abs_err += nn.L1Loss()(y, out).item()
-                #     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
+                    abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
+                    rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
-            train_mse/= ntrain
+            train_mse /= ntrain
             rel_err /= ntest
 
             t2 = default_timer()
@@ -1863,6 +1866,7 @@ def main():
 
                 out_list = list()
                 out1_list = list()
+                abs_err = 0.0
                 for x, y in full_loader:
                     x, y = x.to(device), y.to(device)
 
@@ -1870,6 +1874,10 @@ def main():
                     out1 = y_normalizer.decode(out)
                     out_list.append(out.detach().cpu().numpy())
                     out1_list.append(out1.detach().cpu().numpy().copy())
+
+                    abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
+
+                log('ABS:', abs_err)
                 
                 print (np.array(out_list).shape, np.array(out1_list).shape)
                 with ad2.open('d3d_coarse_v2-fno.bp', 'w') as fw:
