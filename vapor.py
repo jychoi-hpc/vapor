@@ -1782,7 +1782,7 @@ def main():
         full_data = torch.utils.data.TensorDataset(X_full, y_full)
 
         train_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=True)
-        test_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=True)
         full_loader = torch.utils.data.DataLoader(full_data, batch_size=1, shuffle=False)
 
         y_normalizer = UnitGaussianNormalizer(torch.tensor(ly))
@@ -1820,7 +1820,7 @@ def main():
         for ep in range(istart, istart+args.num_training_updates):
             model.train()
             t1 = default_timer()
-            train_mse = 0
+            train_err = 0
             for x, y in train_loader:
                 x, y = x.to(device), y.to(device)
                 # print ('x,y:', x.shape, y.shape)
@@ -1834,13 +1834,13 @@ def main():
                 loss.backward()
 
                 optimizer.step()
-                train_mse += loss.item()
+                train_err += loss.item()
 
             scheduler.step()
 
             model.eval()
             abs_err = 0.0
-            rel_err = 0.0
+            test_err = 0.0
             with torch.no_grad():
                 x = out.detach().cpu().numpy()
                 y = y.detach().cpu().numpy()
@@ -1853,16 +1853,16 @@ def main():
                     # out = y_normalizer.decode(out)
 
                     abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
-                    rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
+                    test_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
-            train_mse /= ntrain
-            rel_err /= ntest
+            train_err /= ntrain
+            test_err /= ntest
 
             t2 = default_timer()
-            log(ep, t2-t1, train_mse, rel_err, abs_err)
+            log(ep, t2-t1, train_err, test_err, abs_err)
 
             if (ep % args.checkpoint_interval == 0) and (rank == 0):
-                save_checkpoint(DIR, prefix, model, train_mse, ep)
+                save_checkpoint(DIR, prefix, model, train_err, ep)
 
                 out_list = list()
                 out1_list = list()
