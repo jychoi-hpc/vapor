@@ -50,6 +50,7 @@ from datetime import datetime
 from pathlib import Path
 
 import hashlib
+from skimage.transform import resize
 
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1564,6 +1565,7 @@ def main():
     group1.add_argument('--nnodes', help='nnodes', type=int, default=None)
     group1.add_argument('--rescale', help='rescale', type=int, default=None)
     group1.add_argument('--rescaleinput', help='rescaleinput', type=int, default=None)
+    group1.add_argument('--rescalefno', help='rescale fno', type=int, default=1)
     group1.add_argument('--learndiff', help='learndiff', action='store_true')
     group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
     group1.add_argument('--fieldline', help='fieldline', action='store_true')
@@ -1741,6 +1743,8 @@ def main():
                 Xenc = np.append(Xenc, Xenc[:,:,38:39,:], axis=2)
 
         _, nx, ny = Z0.shape
+        nx = nx * args.rescalefno
+        ny = ny * args.rescalefno
         x = np.linspace(0, 1, nx, dtype=np.float32)
         y = np.linspace(0, 1, ny, dtype=np.float32)
         xv, yv = np.meshgrid(x, y)
@@ -1753,12 +1757,15 @@ def main():
             iphi, inode = zlb[i,2:]
             X = Xenc[iphi,inode,:]
             X = (X-np.min(X))/(np.max(X)-np.min(X))
+            X = resize(X, (nx,ny), order=0)
             # img = Image.fromarray(X)
             # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
             # X = np.array(img)
             lx.append(np.stack([X, xv, yv], axis=2))
             # lx.append(Xenc[i,:])
-            ly.append(Zif[i,:])
+            Z = Zif[i,:]
+            Z = resize(Z, (nx,ny), order=0)
+            ly.append(Z)
         
         X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.1)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
@@ -1775,7 +1782,7 @@ def main():
         full_data = torch.utils.data.TensorDataset(X_full, y_full)
 
         train_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=True)
-        test_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(full_data, batch_size=batch_size, shuffle=False)
         full_loader = torch.utils.data.DataLoader(full_data, batch_size=1, shuffle=False)
 
         y_normalizer = UnitGaussianNormalizer(torch.tensor(ly))
@@ -1810,7 +1817,7 @@ def main():
 
         myloss = LpLoss(size_average=False)
         y_normalizer.to(device)
-        for ep in range(1, args.num_training_updates+1):
+        for ep in range(istart, istart+args.num_training_updates):
             model.train()
             t1 = default_timer()
             train_mse = 0
@@ -1835,14 +1842,15 @@ def main():
             abs_err = 0.0
             rel_err = 0.0
             with torch.no_grad():
-                for x, y in test_loader:
-                    x, y = x.to(device), y.to(device)
+                abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
+                # for x, y in test_loader:
+                #     x, y = x.to(device), y.to(device)
 
-                    out = model(x)
-                    # out = y_normalizer.decode(out)
+                #     out = model(x)
+                #     # out = y_normalizer.decode(out)
 
-                    abs_err += nn.L1Loss()(y, out).item()
-                    rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
+                #     abs_err += nn.L1Loss()(y, out).item()
+                #     rel_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
 
             train_mse/= ntrain
             abs_err /= ntest
@@ -1871,7 +1879,9 @@ def main():
             shape, start, count = out.shape, [0,]*out.ndim, out.shape
             fw.write('recon', out, shape, start, count)
             fw.write('norm', out1, shape, start, count)
-            fw.write('Zif', Zif, shape, start, count)
+            tmp = np.array(lx)
+            tmp = tmp[:,:,:,0].copy()
+            fw.write('Xenc', tmp, shape, start, count)
 
             shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
             fw.write('zlb', zlb, shape, start, count)
