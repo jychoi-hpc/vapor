@@ -1828,8 +1828,8 @@ def main():
                 optimizer.zero_grad()
                 # loss = F.mse_loss(model(x).view(-1), y.view(-1), reduction='mean')
                 out = model(x)
-                out = y_normalizer.decode(out)
-                y = y_normalizer.decode(y)
+                # out = y_normalizer.decode(out)
+                # y = y_normalizer.decode(y)
                 loss = myloss(out.view(batch_size,-1), y.view(batch_size,-1))
                 loss.backward()
 
@@ -1850,7 +1850,7 @@ def main():
                 for x, y in test_loader:
                     x, y = x.to(device), y.to(device)
                     out = model(x)
-                    out = y_normalizer.decode(out)
+                    # out = y_normalizer.decode(out)
                     
                     abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y, out)).item())
                     test_err += myloss(out.view(batch_size,-1), y.view(batch_size,-1)).item()
