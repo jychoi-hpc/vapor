@@ -1876,14 +1876,14 @@ def main():
                     out = np.array(out_list)
                     out1 = np.array(out1_list)
                     shape, start, count = out.shape, [0,]*out.ndim, out.shape
-                    fw.write('recon', out, shape, start, count)
-                    # fw.write('norm', out1, shape, start, count)
-                    # tmp = np.array(lx)
-                    # tmp = tmp[:,:,:,0].copy()
-                    # fw.write('Xenc', tmp, shape, start, count)
+                    fw.write('recon', out.copy(), shape, start, count)
+                    fw.write('norm', out1.copy(), shape, start, count)
+                    tmp = np.array(lx)
+                    tmp = tmp[:,:,:,0].copy()
+                    fw.write('Xenc', tmp, shape, start, count)
 
                     shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
-                    fw.write('zlb', zlb, shape, start, count)
+                    fw.write('zlb', zlb.copy(), shape, start, count)
 
         return 0
     ## end of fno
