@@ -1861,29 +1861,29 @@ def main():
             if (ep % args.checkpoint_interval == 0) and (rank == 0):
                 save_checkpoint(DIR, prefix, model, train_mse, ep)
 
-        out_list = list()
-        out1_list = list()
-        for x, y in full_loader:
-            x, y = x.to(device), y.to(device)
+                out_list = list()
+                out1_list = list()
+                for x, y in full_loader:
+                    x, y = x.to(device), y.to(device)
 
-            out = model(x)
-            out1 = y_normalizer.decode(out)
-            out_list.append(out.detach().cpu().numpy())
-            out1_list.append(out1.detach().cpu().numpy().copy())
-        
-        print (np.array(out_list).shape, np.array(out1_list).shape)
-        with ad2.open('d3d_coarse_v2-fno.bp', 'w') as fw:
-            out = np.array(out_list)
-            out1 = np.array(out1_list)
-            shape, start, count = out.shape, [0,]*out.ndim, out.shape
-            fw.write('recon', out, shape, start, count)
-            fw.write('norm', out1, shape, start, count)
-            tmp = np.array(lx)
-            tmp = tmp[:,:,:,0].copy()
-            fw.write('Xenc', tmp, shape, start, count)
+                    out = model(x)
+                    out1 = y_normalizer.decode(out)
+                    out_list.append(out.detach().cpu().numpy())
+                    out1_list.append(out1.detach().cpu().numpy().copy())
+                
+                print (np.array(out_list).shape, np.array(out1_list).shape)
+                with ad2.open('d3d_coarse_v2-fno.bp', 'w') as fw:
+                    out = np.array(out_list)
+                    out1 = np.array(out1_list)
+                    shape, start, count = out.shape, [0,]*out.ndim, out.shape
+                    fw.write('recon', out, shape, start, count)
+                    # fw.write('norm', out1, shape, start, count)
+                    # tmp = np.array(lx)
+                    # tmp = tmp[:,:,:,0].copy()
+                    # fw.write('Xenc', tmp, shape, start, count)
 
-            shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
-            fw.write('zlb', zlb, shape, start, count)
+                    shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
+                    fw.write('zlb', zlb, shape, start, count)
 
         return 0
     ## end of fno
