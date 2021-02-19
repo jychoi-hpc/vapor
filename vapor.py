@@ -52,6 +52,8 @@ from pathlib import Path
 import hashlib
 from skimage.transform import resize
 
+from models import *
+
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 xgcexp = None
@@ -2000,10 +2002,11 @@ def main():
     log ('istart:', istart)
 
     if args.vgg:
-        vgg19_model = torch.load('xgc-vgg19.torch')
-        feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
+        modelfile = 'xgc-vgg19-ch1-N1000.torch'
+        feature_extractor = XGCFeatureExtractor(modelfile)
         feature_extractor = feature_extractor.to(device)
-        criterion_content = torch.nn.MSELoss().to(device)
+        # criterion_content = torch.nn.MSELoss().to(device)
+        criterion_content = torch.nn.L1Loss().to(device)
 
     # %%
     nworkers = args.nworkers if args.nworkers is not None else 8
