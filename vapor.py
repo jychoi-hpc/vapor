@@ -1543,6 +1543,7 @@ def main():
     parser.add_argument('--fno_nmodes', help='fno num. of modes', type=int, default=12)
     parser.add_argument('--fno_width', help='fno width', type=int, default=32)
     parser.add_argument('--fno_nlayers', help='fno num. of layers', type=int, default=3)
+    parser.add_argument('--fno_rescale', help='rescale fno', type=int, default=1)
     parser.add_argument('--vgg', help='vgg', action='store_true')
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
@@ -1567,7 +1568,6 @@ def main():
     group1.add_argument('--nnodes', help='nnodes', type=int, default=None)
     group1.add_argument('--rescale', help='rescale', type=int, default=None)
     group1.add_argument('--rescaleinput', help='rescaleinput', type=int, default=None)
-    group1.add_argument('--rescalefno', help='rescale fno', type=int, default=1)
     group1.add_argument('--learndiff', help='learndiff', action='store_true')
     group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
     group1.add_argument('--fieldline', help='fieldline', action='store_true')
@@ -1745,8 +1745,8 @@ def main():
                 Xenc = np.append(Xenc, Xenc[:,:,38:39,:], axis=2)
 
         _, nx, ny = Z0.shape
-        nx = nx * args.rescalefno
-        ny = ny * args.rescalefno
+        nx = nx * args.fno_rescale
+        ny = ny * args.fno_rescale
         x = np.linspace(0, 1, nx, dtype=np.float32)
         y = np.linspace(0, 1, ny, dtype=np.float32)
         xv, yv = np.meshgrid(x, y)
@@ -1759,15 +1759,15 @@ def main():
             iphi, inode = zlb[i,2:]
             X = Xenc[iphi,inode,:]
             X = (X-np.min(X))/(np.max(X)-np.min(X))
-            X = resize(X, (nx,ny), order=0)
+            X = resize(X, (nx,ny), order=0, anti_aliasing=False)
             # img = Image.fromarray(X)
             # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
             # X = np.array(img)
             lx.append(np.stack([X, xv, yv], axis=2))
             # lx.append(Xenc[i,:])
             Z = Zif[i,:]
-            Z = resize(Z, (nx,ny), order=0)
-            ly.append(Z)
+            Z = resize(Z, (nx,ny), order=0, anti_aliasing=False)
+            ly.append(Z-X)
         
         X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.3)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
