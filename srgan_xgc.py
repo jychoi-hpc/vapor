@@ -118,6 +118,14 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # Configure model input
         imgs_lr = Variable(imgs["lr"].type(Tensor))
         imgs_hr = Variable(imgs["hr"].type(Tensor))
+
+        lr_shape = tuple(imgs_lr.shape[2:])
+        n = (64-lr_shape[0])//2
+        imgs_lr = nn.ZeroPad2d(n)(imgs_lr)
+
+        n = (256-hr_shape[0])//2
+        imgs_hr = nn.ZeroPad2d(n)(imgs_hr)
+
         #print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
 
         # Adversarial ground truths
@@ -134,6 +142,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
         gen_hr = generator(imgs_lr)
 
         # Adversarial loss
+        # valid.shape: torch.Size([16, 1, 16, 16])
+        # fake.shape: torch.Size([16, 1, 16, 16])
+        # discriminator(gen_hr).shape: torch.Size([16, 1, 16, 16])
         loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
 
         # Content loss
