@@ -129,7 +129,7 @@ class XGCFDataset(Dataset):
         i = index
         X  = self.X[i,:]
         ## 0: Nearest-neighbor, 1: Bi-linear, 2: Bi-quadratic, 3: Bi-cubic
-        X = resize(X, (self.hr_height, self.hr_height), order=3, anti_aliasing=False) 
+        X = resize(X, (self.hr_height, self.hr_height), order=0, anti_aliasing=False) 
         # (2021/02) Mnay problems for using PIL with numpy
         # im = transforms.ToPILImage()(X)
         # im = transforms.Resize((self.hr_height, self.hr_height), Image.BICUBIC)(im)
