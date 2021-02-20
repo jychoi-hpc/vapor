@@ -1868,6 +1868,7 @@ def main():
 
                 out_list = list()
                 out1_list = list()
+                y_list = list()
                 abs_err = 0.0
                 for x, y in full_loader:
                     x, y = x.to(device), y.to(device)
@@ -1876,6 +1877,7 @@ def main():
                     out1 = y_normalizer.decode(out)
                     out_list.append(out.detach().cpu().numpy())
                     out1_list.append(out1.detach().cpu().numpy().copy())
+                    y_list.append(torch.squeeze(y).detach().cpu().numpy().copy())
 
                     ## Need squeeze for batch size 1
                     abs_err = max(abs_err, torch.max(nn.L1Loss(reduction='none')(y.squeeze(), out1)).item())
@@ -1891,7 +1893,8 @@ def main():
                     fw.write('norm', out1.copy(), shape, start, count)
                     tmp = np.array(lx)
                     tmp = tmp[:,:,:,0].copy()
-                    fw.write('Xenc', tmp, shape, start, count)
+                    fw.write('enc', tmp, shape, start, count)
+                    fw.write('dec', np.array(y_list).copy(), shape, start, count)
 
                     shape, start, count = zlb.shape, [0,]*zlb.ndim, zlb.shape
                     fw.write('zlb', zlb.copy(), shape, start, count)
