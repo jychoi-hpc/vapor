@@ -32,7 +32,7 @@ import torch
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
 parser.add_argument("--n_epochs", type=int, default=20, help="number of epochs of training (default: %(default)s)")
-parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2_4x", help="name of the dataset (default: %(default)s)")
+parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2", help="name of the dataset (default: %(default)s)")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient (default: %(default)s)")
