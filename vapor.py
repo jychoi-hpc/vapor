@@ -1344,13 +1344,14 @@ class SpectralConv2d(nn.Module):
 
         # Multiply relevant Fourier modes
         out_ft = torch.zeros(batchsize, self.in_channels,  x.size(-2), x.size(-1)//2 + 1, 2, device=x.device)
-        # out_ft[:, :, :self.modes1, :self.modes2] = compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
-        # out_ft[:, :, -self.modes1:, :self.modes2] = compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+        out_ft[:, :, :self.modes1, :self.modes2] = compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2] = compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
 
-        ## (2021/02) Save lower-freq
-        m = x_ft.shape[2]//2
-        out_ft[:, :, m-self.modes1:m, -self.modes2:] = compl_mul2d(x_ft[:, :, m-self.modes1:m, -self.modes2:], self.weights1)
-        out_ft[:, :, m:m+self.modes1, -self.modes2:] = compl_mul2d(x_ft[:, :, m:m+self.modes1, -self.modes2:], self.weights2)
+        if False:
+            ## (2021/02) Save lower-freq
+            m = x_ft.shape[2]//2
+            out_ft[:, :, m-self.modes1:m, -self.modes2:] = compl_mul2d(x_ft[:, :, m-self.modes1:m, -self.modes2:], self.weights1)
+            out_ft[:, :, m:m+self.modes1, -self.modes2:] = compl_mul2d(x_ft[:, :, m:m+self.modes1, -self.modes2:], self.weights2)
 
         #Return to physical space
         x = torch.irfft(out_ft, 2, normalized=True, onesided=True, signal_sizes=( x.size(-2), x.size(-1)))
