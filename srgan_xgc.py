@@ -119,11 +119,10 @@ for epoch in range(opt.epoch, opt.n_epochs):
         imgs_lr = Variable(imgs["lr"].type(Tensor))
         imgs_hr = Variable(imgs["hr"].type(Tensor))
 
-        lr_shape = tuple(imgs_lr.shape[2:])
-        n = (64-lr_shape[0])//2
+        n = (64-imgs_lr.shape[2])//2
         imgs_lr = nn.ZeroPad2d(n)(imgs_lr)
 
-        n = (256-hr_shape[0])//2
+        n = (256-imgs_hr.shape[2])//2
         imgs_hr = nn.ZeroPad2d(n)(imgs_hr)
 
         #print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
