@@ -101,8 +101,11 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
+mean = 0.121008*2
+std = 0.217191
+
 dataloader = DataLoader(
-    ImageDataset("%s" % opt.dataset_name, hr_shape=hr_shape),
+    ImageDataset("%s" % opt.dataset_name, hr_shape=hr_shape, mean=mean, std=std),
     batch_size=opt.batch_size,
     shuffle=True,
     num_workers=opt.n_cpu,
@@ -120,11 +123,10 @@ for epoch in range(opt.epoch, opt.n_epochs):
         imgs_hr = Variable(imgs["hr"].type(Tensor))
 
         n = (64-imgs_lr.shape[2])//2
-        imgs_lr = nn.ZeroPad2d(n)(imgs_lr)
+        imgs_lr = F.pad(imgs_lr, (n,n,n,n), "constant", -mean/std)
 
         n = (256-imgs_hr.shape[2])//2
-        imgs_hr = nn.ZeroPad2d(n)(imgs_hr)
-
+        imgs_hr = F.pad(imgs_hr, (n,n,n,n), "constant", -mean/std)
         #print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
 
         # Adversarial ground truths

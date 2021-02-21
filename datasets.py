@@ -16,25 +16,27 @@ import torchvision.transforms as transforms
 #mean = np.array([0.121008])
 #std = np.array([0.217191])
 #(0.1140694549214342, 0.11539442)
-mean = np.array([0.121008*2])
-std = np.array([0.217191])
+# mean = np.array([0.121008*2])
+# std = np.array([0.217191])
 
 class ImageDataset(Dataset):
-    def __init__(self, root, hr_shape):
+    def __init__(self, root, hr_shape, mean, std):
         hr_height, hr_width = hr_shape
+        self.mean = mean
+        self.std = std
         # Transforms for low resolution images and high resolution images
         self.lr_transform = transforms.Compose(
             [
                 # transforms.Resize((hr_height // 4, hr_height // 4), Image.BICUBIC),
                 transforms.ToTensor(),
-                transforms.Normalize(mean, std),
+                transforms.Normalize(self.mean, self.std),
             ]
         )
         self.hr_transform = transforms.Compose(
             [
                 # transforms.Resize((hr_height, hr_height), Image.BICUBIC),
                 transforms.ToTensor(),
-                transforms.Normalize(mean, std),
+                transforms.Normalize(self.mean, self.std),
             ]
         )
 
