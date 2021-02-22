@@ -1743,10 +1743,10 @@ def main():
 
     if args.model == 'fno':
         with ad2.open('d3d_coarse_v2-recon.bp', 'r') as f:
-            Xenc = f.read('i_f_recon').astype(np.float32)
-            if Xenc.shape[3] == 39:
-                Xenc = np.append(Xenc, Xenc[...,38:39], axis=3)
-                Xenc = np.append(Xenc, Xenc[:,:,38:39,:], axis=2)
+            Xrec = f.read('i_f_recon').astype(np.float32)
+            if Xrec.shape[3] == 39:
+                Xrec = np.append(Xrec, Xrec[...,38:39], axis=3)
+                Xrec = np.append(Xrec, Xrec[:,:,38:39,:], axis=2)
 
         _, nx, ny = Z0.shape
         nx = nx * args.fno_rescale
@@ -1761,17 +1761,19 @@ def main():
         ly = list()
         for i in range(len(zlb)):
             iphi, inode = zlb[i,2:]
-            X = Xenc[iphi,inode,:]
-            X = (X-np.min(X))/(np.max(X)-np.min(X))
-            X = resize(X, (nx,ny), order=0, anti_aliasing=False)
+            X = Xrec[iphi,inode,:]
+            # X = (X-np.min(X))/(np.max(X)-np.min(X))
+            if args.fno_rescale>1:
+                X = resize(X, (nx,ny), order=0, anti_aliasing=False)
             # img = Image.fromarray(X)
             # img = img.resize((Z0.shape[-2],Z0.shape[-1]))
             # X = np.array(img)
             lx.append(np.stack([X, xv, yv], axis=2))
-            # lx.append(Xenc[i,:])
+            # lx.append(Xrec[i,:])
             Z = Zif[i,:]
-            Z = resize(Z, (nx,ny), order=0, anti_aliasing=False)
-            ly.append(Z-X)
+            if args.fno_rescale>1:
+                Z = resize(Z, (nx,ny), order=0, anti_aliasing=False)
+            ly.append(Z)
         
         X_train, X_test, y_train, y_test = train_test_split(lx, ly, test_size=0.3)
         print (lx[0].shape, ly[0].shape, len(X_train), len(X_test))
