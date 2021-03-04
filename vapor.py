@@ -1604,6 +1604,7 @@ def main():
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
+    group.add_argument('--ae2d', help='ae conv2d model', action='store_const', dest='model', const='ae2d')
     parser.set_defaults(model='vqvae')
     args = parser.parse_args()
 
@@ -2007,6 +2008,10 @@ def main():
         _, ny, nx = Z0.shape
         model = AE(input_shape=num_channels*ny*nx).to(device)
 
+    if args.model == 'ae2d':
+        _, ny, nx = Z0.shape
+        model = Autoencoder().to(device)
+
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
     dmodel = None
@@ -2131,6 +2136,15 @@ def main():
             optimizer_D.step()
 
         if args.model == 'ae':
+            recon_batch = model(data)
+            recon_error = F.mse_loss(recon_batch, data) / data_variance
+            perplexity = torch.tensor(0)
+            physics_error = torch.tensor(0.0)
+            loss = recon_error
+            loss.backward()
+            optimizer.step()
+
+        if args.model == 'ae2d':
             recon_batch = model(data)
             recon_error = F.mse_loss(recon_batch, data) / data_variance
             perplexity = torch.tensor(0)
