@@ -687,7 +687,6 @@ def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None):
         dat = torch.cat((torch.tensor(Xbar[idx,np.newaxis,:,:]),torch.tensor(Zif[idx,np.newaxis,:,:])))
         #grid_img = make_grid(dat)
         #plt.imshow(grid_img.permute(1, 2, 0))
-        print ('saved:', fname)
         save_image(dat, fname)
 
     # max_rmse_list = [max(rmse_list[i: i+num_channels]) for i in xrange(0, len(rmse_list), num_channels)]
