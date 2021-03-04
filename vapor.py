@@ -1998,7 +1998,7 @@ def main():
 
     if args.model == 'ae':
         _, ny, nx = Z0.shape
-        model = AE(input_shape=num_channels*ny*nx)
+        model = AE(input_shape=num_channels*ny*nx).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -2156,7 +2156,7 @@ def main():
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
         
-            if args.model == 'vae':
+            if args.model in ('vae','ae'):
                 logging.info(f'{i} Loss: {recon_error.item():g}')
 
             if args.model == 'gan':
