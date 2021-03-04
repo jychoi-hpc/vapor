@@ -606,6 +606,9 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 valid_reconstructions, mu, logvar = model(valid_originals)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
+            elif modelname == 'ae':
+                valid_reconstructions = model(valid_originals)
+                lz.append((valid_reconstructions).cpu().data.numpy())
             else:
                 if model._grid is not None:
                     x = valid_originals
@@ -1214,28 +1217,35 @@ Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa2
 class AE(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
+
+        ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
         self.encoder_hidden_layer = nn.Linear(
-            in_features=kwargs["input_shape"], out_features=128
+            in_features=kwargs["input_shape"], out_features=400
         )
         self.encoder_output_layer = nn.Linear(
-            in_features=128, out_features=128
+            in_features=400, out_features=400
         )
         self.decoder_hidden_layer = nn.Linear(
-            in_features=128, out_features=128
+            in_features=400, out_features=400
         )
         self.decoder_output_layer = nn.Linear(
-            in_features=128, out_features=kwargs["input_shape"]
+            in_features=400, out_features=kwargs["input_shape"]
         )
 
     def forward(self, features):
+        nbatch, nc, ny, nx = features.shape
+        features = features.view(nbatch, -1)
+
         activation = self.encoder_hidden_layer(features)
-        activation = torch.tanh(activation)
+        activation = torch.relu(activation)
         code = self.encoder_output_layer(activation)
-        code = torch.tanh(code)
+        code = torch.relu(code)
         activation = self.decoder_hidden_layer(code)
-        activation = torch.tanh(activation)
+        activation = torch.relu(activation)
         activation = self.decoder_output_layer(activation)
-        reconstructed = torch.tanh(activation)
+        reconstructed = torch.relu(activation)
+
+        reconstructed = reconstructed.view(nbatch, nc, ny, nx)
         return reconstructed
 
 # %%
@@ -1586,6 +1596,7 @@ def main():
     group.add_argument('--vqvae', help='vae model', action='store_const', dest='model', const='vqvae')
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
+    group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
     parser.set_defaults(model='vqvae')
     args = parser.parse_args()
 
@@ -1985,6 +1996,9 @@ def main():
         adversarial_loss = torch.nn.BCELoss().to(device)
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
+    if args.model == 'ae':
+        _, ny, nx = Z0.shape
+        model = AE(input_shape=num_channels*ny*nx)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -2108,7 +2122,16 @@ def main():
 
             d_loss.backward()
             optimizer_D.step()
-        
+
+        if args.model == 'ae':
+            recon_batch = model(data)
+            recon_error = F.mse_loss(recon_batch, data) / data_variance
+            perplexity = torch.tensor(0)
+            physics_error = torch.tensor(0.0)
+            loss = recon_error
+            loss.backward()
+            optimizer.step()
+
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error.item())
