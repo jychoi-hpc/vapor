@@ -40,7 +40,7 @@ from torch.backends import cudnn
 
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 
 import xgc4py
 from tqdm import tqdm
@@ -663,7 +663,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     else:
         return (X0, Xbar, np.mean(X0, axis=(1,2)), Xenc)
 
-def estimate_error(model, Zif, zmin, zmax, num_channels, modelname):
+def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None):
     """
     Error calculation
     """
@@ -680,6 +680,15 @@ def estimate_error(model, Zif, zmin, zmax, num_channels, modelname):
         ## ABS error
         abserr = np.max(np.abs(Z-X))
         abs_list.append(abserr)
+    
+    if fname is not None:
+        od = np.argsort(abs_list)[::-1]
+        idx = od[:8]
+        dat = torch.cat((torch.tensor(Xbar[idx,np.newaxis,:,:]),torch.tensor(Zif[idx,np.newaxis,:,:])))
+        #grid_img = make_grid(dat)
+        #plt.imshow(grid_img.permute(1, 2, 0))
+        print ('saved:', fname)
+        save_image(dat, fname)
 
     # max_rmse_list = [max(rmse_list[i: i+num_channels]) for i in xrange(0, len(rmse_list), num_channels)]
     # max_abs_list = [max(abs_list[i: i+num_channels]) for i in xrange(0, len(abs_list), num_channels)]
@@ -1032,7 +1041,6 @@ class Model(nn.Module):
         # print ('#4:', x_recon.shape)
 
         if self.rescale is not None:
-            import pdb; pdb.set_trace()
             x_recon = F.interpolate(x_recon, size=(nx, ny))
             print ('scale-down', x_recon.shape)
 
@@ -2163,7 +2171,10 @@ def main():
                 logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {len(training_loader.dataset)} {len(data)}')
                 logging.info(f'{i} G-D loss: {g_loss.item():g} {d_loss.item():g}')
 
-            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
+            fname = None
+            if (i % args.checkpoint_interval == 0) and (rank == 0):
+                fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
+            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname)
             logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
