@@ -1243,8 +1243,8 @@ class AE(nn.Module):
         nbatch, nc, ny, nx = features.shape
         features = features.view(nbatch, -1)
 
-        f0 = torch.nn.ReLU()
-        f1 = torch.nn.LeakyReLU()
+        f1 = torch.nn.ReLU()
+        f0 = torch.nn.LeakyReLU()
         activation = self.encoder_hidden_layer(features)
         activation = f1(activation)
         code = self.encoder_output_layer(activation)
