@@ -49,9 +49,10 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None):
     
     return (X0, Xbar, np.mean(X0, axis=(1,2)))
 
-def saveimg(X, n, outdir, seq):
+def saveimg(X, outdir, seq, nx=None):
     os.makedirs(outdir, exist_ok=True)
-    X = resize(X, (n,n), order=0, anti_aliasing=False)
+    if nx is not None:
+        X = resize(X, (nx,nx), order=3, anti_aliasing=False)
     X = (X-X.min())/(X.max()-X.min())*255
     X = X.astype(np.float32).copy()
 
@@ -102,9 +103,9 @@ if __name__ == "__main__":
     for i in range(len(LR)):
         X = LR[i,:,:]
         outdir='xgc_images-d3d_coarse_v2-lr'
-        saveimg(X, opt.lr, outdir, i)
+        saveimg(X, outdir, i)
 
         Z = HR[i,:,:]
         outdir='xgc_images-d3d_coarse_v2-hr'
-        saveimg(Z, opt.hr, outdir, i)
+        saveimg(Z, outdir, i, nx=opt.hr)
 
