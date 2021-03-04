@@ -1227,16 +1227,16 @@ class AE(nn.Module):
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
         self.encoder_hidden_layer = nn.Linear(
-            in_features=kwargs["input_shape"], out_features=400
+            in_features=kwargs["input_shape"], out_features=800
         )
         self.encoder_output_layer = nn.Linear(
-            in_features=400, out_features=400
+            in_features=800, out_features=400
         )
         self.decoder_hidden_layer = nn.Linear(
-            in_features=400, out_features=400
+            in_features=400, out_features=800
         )
         self.decoder_output_layer = nn.Linear(
-            in_features=400, out_features=kwargs["input_shape"]
+            in_features=800, out_features=kwargs["input_shape"]
         )
 
     def forward(self, features):
