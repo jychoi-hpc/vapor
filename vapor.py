@@ -2015,6 +2015,18 @@ def main():
         _, ny, nx = Z0.shape
         model = Autoencoder().to(device)
 
+    # %%
+    # Load checkpoint
+    _istart, _model, _dmodel = 0, None, None
+    if not args.overwrite: 
+        _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
+        
+    if _model is not None:
+        istart = _istart + 1
+        model = _model
+        model.train()
+    log ('istart:', istart)
+
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
 
     dmodel = None
@@ -2029,18 +2041,6 @@ def main():
     train_res_perplexity = []
     train_res_physics_error = []
     istart = 1
-
-    # %%
-    # Load checkpoint
-    _istart, _model, _dmodel = 0, None, None
-    if not args.overwrite: 
-        _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
-        
-    if _model is not None:
-        istart = _istart + 1
-        model = _model
-        model.train()
-    log ('istart:', istart)
 
     if args.vgg:
         modelfile = 'xgc-vgg19-ch1-N1000.torch'
