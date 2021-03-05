@@ -673,7 +673,7 @@ def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None, 
     """
     Error calculation
     """
-    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=False)
+    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=conditional)
 
     rmse_list = list()
     abs_list = list()
