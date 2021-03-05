@@ -1733,7 +1733,7 @@ def main():
                     logging.info (f'Surf idx, len: {i} {len(_nodes)}')
                     node_list.extend(_nodes)
                 nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
-                _out = read_f0_nodes(istep, node_list, expdir=args.datadir, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
+                _out = read_f0_nodes(istep, node_list, expdir=args.datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                 f0_data_list.append(_out)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
