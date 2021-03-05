@@ -16,7 +16,7 @@ class XGCFeatureExtractor(nn.Module):
         else:
             map_location='cpu'        
         vgg19_model = torch.load(modelfile, map_location=map_location)
-        self.feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
+        self.feature_extractor = vgg19_model
 
     def forward(self, img):
         return self.feature_extractor(img)

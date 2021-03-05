@@ -581,7 +581,7 @@ def average_gradients(model):
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
-def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False):
+def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False, conditional=False):
     """
     Reconstructing data based on a trained model
     """
@@ -601,7 +601,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         encode_list = list()
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
-            _, nchannel, dim1, dim2 = valid_originals.shape
+            nbatch, nchannel, dim1, dim2 = valid_originals.shape
             if modelname == 'vae':
                 valid_reconstructions, mu, logvar = model(valid_originals)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
@@ -612,7 +612,6 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
             else:
                 if model._grid is not None:
                     x = valid_originals
-                    nbatch, nchannel, dim1, dim2 = x.shape
                     x = torch.cat([x, model._grid.repeat(nbatch,1,1,1)], dim=1)
                     x = x.permute(0, 2, 3, 1)
                     x = model.fc0(x)
@@ -622,6 +621,13 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 vq_encoded = model._encoder(valid_originals)
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+                if conditional:
+                    feature = model.feature_extractor(valid_originals)
+                    cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+                    p1d = (0, 1)
+                    cond = F.pad(cond, p1d, "constant", 0)
+                    cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+                    valid_quantize = torch.cat((valid_quantize, cond), dim=1)
                 valid_reconstructions = model._decoder(valid_quantize)
                 encode_list.append(valid_quantize)
                 #print (vq_encoded.shape, vq_output_eval.shape, valid_quantize.shape, valid_reconstructions.shape)
@@ -663,11 +669,11 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     else:
         return (X0, Xbar, np.mean(X0, axis=(1,2)), Xenc)
 
-def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None):
+def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None, conditional=False):
     """
     Error calculation
     """
-    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname)
+    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=False)
 
     rmse_list = list()
     abs_list = list()
@@ -946,12 +952,13 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False, grid=None):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False, grid=None, conditional=False):
         super(Model, self).__init__()
         
         self._grid = grid
         self.width = num_channels
         self.rescale = rescale
+        self.conditional = conditional
         log ("Model rescale:", self.rescale)
         
         if grid is not None:
@@ -973,7 +980,10 @@ class Model(nn.Module):
         else:
             self._vq_vae = VectorQuantizer(num_embeddings, embedding_dim,
                                            commitment_cost)
-        self._decoder = Decoder(embedding_dim,
+        _embedding_dim = embedding_dim
+        if self.conditional:
+            _embedding_dim = embedding_dim + 4
+        self._decoder = Decoder(_embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
                                 num_residual_hiddens, self.width)
@@ -1011,10 +1021,16 @@ class Model(nn.Module):
             self._dcriterion = nn.MSELoss()
         
         self._shaconv = shaconv
-        
+
+        if self.conditional:
+            modelfile = 'xgc-vgg19-ch1-N1000.torch'
+            self.feature_extractor = XGCFeatureExtractor(modelfile)
+            self.feature_extractor = self.feature_extractor.to(device)
+            self.feature_extractor.eval()
+
     def forward(self, x):
+        nbatch, nchannel, dim1, dim2 = x.shape
         if self._grid is not None:
-            nbatch, nchannel, dim1, dim2 = x.shape
             x = torch.cat([x, self._grid.repeat(nbatch,1,1,1)], dim=1)
             x = x.permute(0, 2, 3, 1)
             x = self.fc0(x)
@@ -1036,6 +1052,14 @@ class Model(nn.Module):
         # print ('#2:', z.shape)
         loss, quantized, perplexity, _ = self._vq_vae(z)
         # print ('#3:', quantized.shape)
+        if self.conditional:
+            feature = self.feature_extractor(x)
+            cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+            p1d = (0, 1)
+            cond = F.pad(cond, p1d, "constant", 0)
+            cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+            quantized = torch.cat((quantized, cond), dim=1)
+
         x_recon = self._decoder(quantized)
         # print ('#4:', x_recon.shape)
 
@@ -1569,6 +1593,7 @@ def main():
     parser.add_argument('--fno_nlayers', help='fno num. of layers', type=int, default=3)
     parser.add_argument('--fno_rescale', help='rescale fno', type=int, default=1)
     parser.add_argument('--vgg', help='vgg', action='store_true')
+    parser.add_argument('--conditional', help='conditional', action='store_true')
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -1992,7 +2017,8 @@ def main():
     if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
-                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv, grid=grid).to(device)
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional).to(device)
 
     if args.model == 'vae':
         _, ny, nx = Z0.shape
@@ -2045,6 +2071,8 @@ def main():
         modelfile = 'xgc-vgg19-ch1-N1000.torch'
         feature_extractor = XGCFeatureExtractor(modelfile)
         feature_extractor = feature_extractor.to(device)
+        feature_extractor.eval()
+
         # criterion_content = torch.nn.MSELoss().to(device)
         criterion_content = torch.nn.L1Loss().to(device)
 
@@ -2206,11 +2234,11 @@ def main():
     with torch.no_grad():
         (valid_originals, valid_labels) = next(iter(validation_loader))
         valid_originals = valid_originals.to(device)
+        nbatch, nchannel, dim1, dim2 = valid_originals.shape
 
         if args.model == 'vqvae':
             if model._grid is not None:
                 x = valid_originals
-                nbatch, nchannel, dim1, dim2 = x.shape
                 x = torch.cat([x, model._grid.repeat(nbatch,1,1,1)], dim=1)
                 x = x.permute(0, 2, 3, 1)
                 x = model.fc0(x)
@@ -2219,6 +2247,13 @@ def main():
             vq_encoded = model._encoder(valid_originals)
             vq_output_eval = model._pre_vq_conv(vq_encoded)
             _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
+            if args.conditional:
+                feature = model.feature_extractor(valid_originals)
+                cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+                p1d = (0, 1)
+                cond = F.pad(cond, p1d, "constant", 0)
+                cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+                valid_quantize = torch.cat((valid_quantize, cond), dim=1)
             valid_reconstructions = model._decoder(valid_quantize)
             if model._grid is not None:
                 x = valid_reconstructions
@@ -2248,7 +2283,7 @@ def main():
             # logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
         logging.info ('Reconstructing ...')
-        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model)
+        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
         log (Zif.shape, Xbar.shape)
 
         rmse_list = list()
