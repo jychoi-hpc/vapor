@@ -2032,10 +2032,13 @@ def main():
     # %%
     # Load checkpoint
     _istart, _model, _dmodel = 0, None, None
-    if not args.overwrite: _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
+    if not args.overwrite: 
+        _istart, _model, _dmodel = load_checkpoint(DIR, prefix, model)
+        
     if _model is not None:
         istart = _istart + 1
         model = _model
+        model.train()
     log ('istart:', istart)
 
     if args.vgg:
