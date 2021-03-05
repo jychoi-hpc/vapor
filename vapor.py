@@ -1243,14 +1243,15 @@ class AE(nn.Module):
         nbatch, nc, ny, nx = features.shape
         features = features.view(nbatch, -1)
 
-        f1 = torch.nn.ReLU()
-        f0 = torch.nn.LeakyReLU()
+        f0 = torch.nn.ReLU()
+        f1 = torch.nn.LeakyReLU()
+        f2 = torch.nn.Tanh()
         activation = self.encoder_hidden_layer(features)
         activation = f1(activation)
         code = self.encoder_output_layer(activation)
-        code = f0(code)
+        code = f1(code)
         activation = self.decoder_hidden_layer(code)
-        activation = f0(activation)
+        activation = f1(activation)
         activation = self.decoder_output_layer(activation)
         reconstructed = f1(activation)
 
@@ -2143,6 +2144,8 @@ def main():
         if args.model == 'ae':
             recon_batch = model(data)
             recon_error = F.mse_loss(recon_batch, data) / data_variance
+            #l1loss = nn.L1Loss()
+            #recon_error = l1loss(recon_batch, data) 
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss = recon_error
