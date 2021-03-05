@@ -2016,6 +2016,11 @@ def main():
         model = Autoencoder().to(device)
 
     # %%
+    train_res_recon_error = []
+    train_res_perplexity = []
+    train_res_physics_error = []
+    istart = 1
+
     # Load checkpoint
     _istart, _model, _dmodel = 0, None, None
     if not args.overwrite: 
@@ -2024,7 +2029,7 @@ def main():
     if _model is not None:
         istart = _istart + 1
         model = _model
-        model.train()
+    model.train()
     log ('istart:', istart)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
@@ -2035,12 +2040,6 @@ def main():
         dmodel = AE(input_shape=num_channels*dim1*dim2).to(device)
         doptimizer = optim.Adam(dmodel.parameters(), lr=1e-3)
         dcriterion = nn.MSELoss()
-
-    model.train()
-    train_res_recon_error = []
-    train_res_perplexity = []
-    train_res_physics_error = []
-    istart = 1
 
     if args.vgg:
         modelfile = 'xgc-vgg19-ch1-N1000.torch'
