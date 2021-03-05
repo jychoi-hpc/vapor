@@ -2193,7 +2193,7 @@ def main():
         train_res_physics_error.append(physics_error.item())
 
         if args.resampling and (i % resampling_interval == 0):
-            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model)
+            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, conditional=args.conditional)
             err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
             lxx = [ lx[i] for i in idx ]
@@ -2222,7 +2222,7 @@ def main():
             fname = None
             if (i % args.checkpoint_interval == 0) and (rank == 0):
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
-            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname)
+            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
             logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
