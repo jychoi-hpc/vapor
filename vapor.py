@@ -606,7 +606,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 valid_reconstructions, mu, logvar = model(valid_originals)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
-            elif modelname == 'ae':
+            elif modelname in ('ae','ae2d'):
                 valid_reconstructions = model(valid_originals)
                 lz.append((valid_reconstructions).cpu().data.numpy())
             else:
@@ -659,6 +659,7 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         xmin = np.min(Xbar, axis=(1,2))
         xmax = np.max(Xbar, axis=(1,2))
         Xbar = (Xbar-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+        # import pdb; pdb.set_trace()
 
         ## Un-normalize
         X0 = Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
@@ -1286,20 +1287,51 @@ class AE(nn.Module):
 """
 Credit: https://medium.com/@vaibhaw.vipul/building-autoencoder-in-pytorch-34052d1d280c
 """
+class FlatView(nn.Module):
+    def __init__(self):
+        super(FlatView, self).__init__()
+
+    def forward(self, x):
+        return x.view(x.size()[0], -1)
+
+class ConvView(nn.Module):
+    def __init__(self, nc, nh, nw):
+        super(ConvView, self).__init__()
+        self.nc = nc
+        self.nh = nh
+        self.nw = nw
+
+    def forward(self, x):
+        return x.view(x.size()[0], self.nc, self.nh, self.nw)
+
 class Autoencoder(nn.Module):
     def __init__(self):
         super(Autoencoder,self).__init__()
         
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 6, kernel_size=5),
-            nn.ReLU(True),
-            nn.Conv2d(6,16,kernel_size=5),
-            nn.ReLU(True))
+            nn.Conv2d(1, 1, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(True),
+            FlatView(),
+            nn.Linear(400, 400),
+            nn.LeakyReLU(True),
+            #nn.Conv2d(3, 6, kernel_size=5),
+            #nn.ReLU(True),
+            #nn.Conv2d(6,16,kernel_size=5),
+            #nn.ReLU(True)
+            )
+
         self.decoder = nn.Sequential(             
-            nn.ConvTranspose2d(16,6,kernel_size=5),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(6,3,kernel_size=5),
-            nn.ReLU(True))
+            nn.Linear(400, 400),
+            nn.LeakyReLU(True),
+            ConvView(1, 20, 20),
+            nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.LeakyReLU(True),
+            #nn.ConvTranspose2d(16,6,kernel_size=5),
+            #nn.ReLU(True),
+            #nn.ConvTranspose2d(6,3,kernel_size=5),
+            #nn.ReLU(True)
+            )
+
     def forward(self,x):
         x = self.encoder(x)
         x = self.decoder(x)
@@ -2212,7 +2244,7 @@ def main():
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
         
-            if args.model in ('vae','ae'):
+            if args.model in ('vae','ae','ae2d'):
                 logging.info(f'{i} Loss: {recon_error.item():g}')
 
             if args.model == 'gan':
@@ -2305,6 +2337,7 @@ def main():
             ## SSIM
             #_ssim = ssim(Z, X, data_range=X.max()-X.min())
             #ssim_list.append(_ssim)
+        logging.info ('Model params: %d'%(sum(p.numel() for p in model.parameters() if p.requires_grad)))
         info ('RMSE error: %g %g %g'%(np.min(rmse_list), np.mean(rmse_list), np.max(rmse_list)))
         info ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
         info ('total_trained:')
