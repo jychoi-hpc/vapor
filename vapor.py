@@ -1265,7 +1265,7 @@ class AE(nn.Module):
         )
 
     def forward(self, features):
-        nbatch, nc, ny, nx = features.shape
+        nbatch, nc, nx, ny = features.shape
         features = features.view(nbatch, -1)
 
         f0 = torch.nn.ReLU()
@@ -1280,7 +1280,7 @@ class AE(nn.Module):
         activation = self.decoder_output_layer(activation)
         reconstructed = f1(activation)
 
-        reconstructed = reconstructed.view(nbatch, nc, ny, nx)
+        reconstructed = reconstructed.view(nbatch, nc, nx, ny)
         return reconstructed
 
 # %%
@@ -1790,6 +1790,8 @@ def main():
                     _nodes = xgcexp.mesh.surf_nodes(i)
                     logging.info (f'Surf idx, len: {i} {len(_nodes)}')
                     node_list.extend(_nodes)
+                if args.nnodes is not None:
+                    node_list = node_list[:args.nnodes]
                 nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
                 _out = read_f0_nodes(istep, node_list, expdir=args.datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                 f0_data_list.append(_out)
@@ -2025,14 +2027,8 @@ def main():
     training_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
     validation_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
 
-    training_loader = DataLoader(training_data, 
-                                batch_size=batch_size, 
-                                shuffle=True,
-                                pin_memory=True)
-    validation_loader = DataLoader(validation_data,
-                                batch_size=batch_size,
-                                shuffle=True,
-                                pin_memory=True)
+    training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=False, pin_memory=True)
+    validation_loader = DataLoader(validation_data, batch_size=batch_size, shuffle=False, pin_memory=True)
 
     # %% 
     # Model
@@ -2046,6 +2042,7 @@ def main():
     #                 num_embeddings, embedding_dim, 
     #                 commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
     
+    _, nx, ny = Z0.shape
     if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
@@ -2053,24 +2050,20 @@ def main():
                     shaconv=args.shaconv, grid=grid, conditional=args.conditional).to(device)
 
     if args.model == 'vae':
-        _, ny, nx = Z0.shape
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
     
     if args.model == 'gan':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
-        _, ny, nx = Z0.shape
         discriminator = Discriminator(args.num_channels, nx, ny).to(device)
         adversarial_loss = torch.nn.BCELoss().to(device)
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae':
-        _, ny, nx = Z0.shape
         model = AE(input_shape=num_channels*ny*nx).to(device)
 
     if args.model == 'ae2d':
-        _, ny, nx = Z0.shape
         model = Autoencoder().to(device)
 
     # %%
@@ -2337,11 +2330,27 @@ def main():
             ## SSIM
             #_ssim = ssim(Z, X, data_range=X.max()-X.min())
             #ssim_list.append(_ssim)
-        logging.info ('Model params: %d'%(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+
         info ('RMSE error: %g %g %g'%(np.min(rmse_list), np.mean(rmse_list), np.max(rmse_list)))
         info ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
         info ('total_trained:')
         info (total_trained)
+
+        info ('')
+        info ('Model params')
+        info ('-'*50)
+        num_params = 0
+        for k, v in model.state_dict().items():
+            info ('%50s\t%20s\t%10d'%(k, list(v.shape), v.numel()))
+            num_params += v.numel()
+        info ('-'*50)
+        info ('%50s\t%20s\t%10d'%('Total', '', num_params))
+
+        if args.model == 'vqvae':
+            num_params = 0
+            for k, v in model._decoder.state_dict().items():
+                num_params += v.numel()
+            info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
 if __name__ == "__main__":
     # torch.set_default_tensor_type(torch.DoubleTensor)
