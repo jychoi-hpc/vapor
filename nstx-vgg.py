@@ -275,18 +275,20 @@ if __name__ == "__main__":
             loss_train += loss.item() * inputs.size(0)
             acc_train += torch.sum(preds == labels.data)
             # print ('model:', model.features[0].weight.sum().item())
-            if (i+1) % 100 == 0:
+            if (i+1) % 1 == 0:
                 # print ('model:', model.features[0].weight.sum().item())
                 print('[Epoch {:d}/{:d}] [Batch {:d}/{:d}] {} loss: {:.4f}'.format(epoch, num_epochs, i, len(training_loader), 'Train', loss.item()))
-            if (i+1) % 1000 == 0:
+                
+            if (i+1) % 10 == 0:
                 print('Acc: ', torch.sum(preds == labels.data).item()/len(preds))
                 print("Label:")
                 print(labels)
                 print("Pred:")
                 print(preds)
-            if (i+1) % 10000 == 0:
-                print('Saving:', modelfile)
-                torch.save(model, modelfile)
+
+        if (epoch+1) % 100 == 0:
+            print('Saving:', modelfile)
+            torch.save(model, modelfile)
 
         avg_loss = loss_train / training_sample_size
         avg_acc = acc_train.double() / training_sample_size
