@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     unique, counts = np.unique(nclass, return_counts=True)
     fcls = dict(zip(unique, counts)) 
-    num_classes = len(fcls)
+    num_classes = 1024
     print ("fcls, max nclasses", len(fcls), num_classes)
     # plt.figure()
     # plt.bar(unique, counts)
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     since = time.time()    
     for epoch in range(num_epochs):
         
-        print("Epoch {}/{}".format(epoch, num_epochs-1))
+        print("Epoch {}/{}".format(epoch, num_epochs))
         print('-' * 10)
 
         model.train()
@@ -290,8 +290,8 @@ if __name__ == "__main__":
             print('Saving:', modelfile)
             torch.save(model, modelfile)
 
-        avg_loss = loss_train / training_sample_size
-        avg_acc = acc_train.double() / training_sample_size
+        avg_loss = loss_train / len(training_loader)
+        avg_acc = acc_train.double() / len(training_loader)
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Epoch', epoch_loss, epoch_acc))
         torch.save(model, modelfile)
         
@@ -319,8 +319,8 @@ if __name__ == "__main__":
                 print("Pred:")
                 print(preds)
 
-        avg_loss_val = loss_val / validation_sample_size
-        avg_acc_val = acc_val.double() / validation_sample_size
+        avg_loss_val = loss_val / len(validation_loader)
+        avg_acc_val = acc_val.double() / len(validation_loader)
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Test', epoch_loss, epoch_acc))
         print()
         print("Avg loss (train): {:.4f}".format(avg_loss))
