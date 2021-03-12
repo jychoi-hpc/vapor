@@ -191,7 +191,7 @@ if __name__ == "__main__":
 
     if opt.model == 'N1024':
         ## 1024 classes
-        nclass = np.load('nstx_data_ornl_demo_v2-label.npy')
+        nclass = np.load('nstx_data_ornl_demo_v2-label.npy')[:length]
         print (nclass.shape)
 
     unique, counts = np.unique(nclass, return_counts=True)
