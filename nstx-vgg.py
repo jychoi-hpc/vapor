@@ -153,6 +153,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
+    parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
     parser.add_argument("--lr", type=float, default=0.001, help="adam: learning rate")
     # parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
     # parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
@@ -176,7 +177,7 @@ if __name__ == "__main__":
 
     # %%
     offset = 159065
-    length = 16_000
+    length = opt.nframes
     with ad2.open('nstx_data_ornl_demo_v2.bp','r') as f:
         start=(offset,0,0) 
         count=(length,64,80)
