@@ -988,13 +988,13 @@ class Decoder(nn.Module):
             ## 32->1, 20->40
             ConvTBlock(32, 16, kernel_size=3, stride=1, padding=0),
             ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(16, 8, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(8, 8, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(8, 4, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(16, 4, kernel_size=3, stride=1, padding=0),
             ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(4, 2, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(2, 2, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(2, 1, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(4, 1, kernel_size=3, stride=1, padding=0),
             ConvTBlock(1, 1, kernel_size=3, stride=1, padding=0),
         )
 
