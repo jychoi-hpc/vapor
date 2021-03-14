@@ -968,35 +968,36 @@ class Decoder(nn.Module):
         # self._conv_trans_1 = ConvTBlock(num_hiddens, num_hiddens//2)
         # self._conv_trans_2 = ConvTBlock(num_hiddens//2, num_hiddens//4)
         # self._conv_trans_3 = ConvTBlock(num_hiddens//4, num_channels)
-        # self._block = nn.Sequential(
-        #     ConvTBlock(num_hiddens, num_hiddens//2, 4, 2, 1),
-        #     ConvTBlock(num_hiddens//2, num_hiddens//4, 4, 2, 1),
-        #     ConvTBlock(num_hiddens//4, num_channels, 4, 2, 1)
-        # )
-
         self._block = nn.Sequential(
-            ## 128->64, 5->10
-            ConvTBlock(128, 64, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(64, 64, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(64, 64, kernel_size=4, stride=1, padding=1),
-            ## 64->32, 10->20
-            ConvTBlock(64, 32, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
-            ## 32->1, 20->40
-            ConvTBlock(32, 16, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(16, 4, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(4, 1, kernel_size=3, stride=1, padding=0),
-            ConvTBlock(1, 1, kernel_size=3, stride=1, padding=0),
+            ConvTBlock(num_hiddens, num_hiddens//2, 4, 2, 1),
+            ConvTBlock(num_hiddens//2, num_hiddens//4, 4, 2, 1),
+            ConvTBlock(num_hiddens//4, num_channels, 4, 2, 1)
         )
+
+        # # (2021/03)
+        # self._block = nn.Sequential(
+        #     ## 128->64, 5->10
+        #     ConvTBlock(128, 64, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(64, 64, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(64, 64, kernel_size=4, stride=1, padding=1),
+        #     ## 64->32, 10->20
+        #     ConvTBlock(64, 32, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(32, 32, kernel_size=3, stride=1, padding=0),
+        #     ## 32->1, 20->40
+        #     ConvTBlock(32, 16, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(16, 16, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(16, 4, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(4, 4, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(4, 1, kernel_size=3, stride=1, padding=0),
+        #     ConvTBlock(1, 1, kernel_size=3, stride=1, padding=0),
+        # )
 
     #0: torch.Size([1, 16, 5, 5])
     #1: torch.Size([1, 128, 5, 5])
