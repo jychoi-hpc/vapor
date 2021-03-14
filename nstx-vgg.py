@@ -257,7 +257,7 @@ if __name__ == "__main__":
         loss_train = 0.0
         acc_train = 0
         for i, data in enumerate(training_loader):
-            inputs , labels = data
+            inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
             ns = torch.normal(mean=0.0, std=inputs*0.01)
@@ -296,12 +296,13 @@ if __name__ == "__main__":
         #print('{} Loss: {:.4f} Acc: {:.4f}'.format('Epoch', epoch_loss, epoch_acc))
         torch.save(model, modelfile)
         
+        print("Validation:")
         model.eval()    
         # Iterate over data.
         loss_val = 0.0
         acc_val = 0
         for i, data in enumerate(validation_loader):
-            inputs , labels = data
+            inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
 
@@ -311,9 +312,9 @@ if __name__ == "__main__":
             
             loss_val += loss.item() * inputs.size(0)
             acc_val += torch.sum(preds == labels.data)
-            if (i+1) % 100 == 0:
+            if (i+1) % 1 == 0:
                 print('[Epoch {:d}/{:d}] [Batch {:d}/{:d}] {} loss: {:.4f}'.format(epoch, num_epochs, i, len(validation_loader), 'Test', loss.item()))
-            if (i+1) % 1000 == 0:
+            if (i+1) % 10 == 0:
                 print('Acc: ', torch.sum(preds == labels.data).item()/len(preds))
                 print("Label:")
                 print(labels)
