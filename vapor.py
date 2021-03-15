@@ -2096,8 +2096,8 @@ def main():
     training_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
     validation_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
 
-    training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=False, pin_memory=True)
-    validation_loader = DataLoader(validation_data, batch_size=batch_size, shuffle=False, pin_memory=True)
+    training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
+    validation_loader = DataLoader(validation_data, batch_size=batch_size, shuffle=True, pin_memory=True)
 
     # %% 
     # Model
