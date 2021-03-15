@@ -889,24 +889,21 @@ class Encoder(nn.Module):
         # kernel_size=4, stride=2, padding=1
         # kernel_size=3, stride=2, padding=1
         # kernel_size=2, stride=2, padding=0
-        # self._conv_1 = nn.Conv2d(in_channels=in_channels,
-        #                          out_channels=num_hiddens//2,
-        #                          kernel_size=3, stride=2, padding=1)
-        # self._conv_2 = nn.Conv2d(in_channels=num_hiddens//2,
-        #                          out_channels=num_hiddens,
-        #                          kernel_size=3, stride=2, padding=1)
-        # self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
-        #                          out_channels=num_hiddens,
-        #                          kernel_size=3, stride=2, padding=1)
+        self._conv_1 = nn.Conv2d(in_channels=in_channels,
+                                 out_channels=num_hiddens//2,
+                                 kernel_size=3, stride=2, padding=1)
+        self._conv_2 = nn.Conv2d(in_channels=num_hiddens//2,
+                                 out_channels=num_hiddens,
+                                 kernel_size=3, stride=2, padding=1)
+        self._conv_3 = nn.Conv2d(in_channels=num_hiddens,
+                                 out_channels=num_hiddens,
+                                 kernel_size=3, stride=2, padding=1)
 
-        # self._conv_1 = ConvBlock(in_channels, num_hiddens//2)
-        # self._conv_2 = ConvBlock(num_hiddens//2, num_hiddens)
-        # self._conv_3 = ConvBlock(num_hiddens, num_hiddens)
-        self._block = nn.Sequential(
-            ConvBlock(in_channels, num_hiddens//2),
-            ConvBlock(num_hiddens//2, num_hiddens),
-            ConvBlock(num_hiddens, num_hiddens),
-        )
+        # self._block = nn.Sequential(
+        #     ConvBlock(in_channels, num_hiddens//2),
+        #     ConvBlock(num_hiddens//2, num_hiddens),
+        #     ConvBlock(num_hiddens, num_hiddens),
+        # )
 
         # kernel_size=3, stride=1, padding=1
         # kernel_size=2, stride=2, padding=0
@@ -926,10 +923,15 @@ class Encoder(nn.Module):
         #     x = self._conv_0(x)
         #     x = F.relu(x)
 
-        # x = self._conv_1(x)
-        # x = self._conv_2(x)
-        # x = self._conv_3(x)
-        x = self._block(x)
+        x = self._conv_1(x)
+        x = F.relu(x)
+        
+        x = self._conv_2(x)
+        x = F.relu(x)
+        
+        x = self._conv_3(x)
+        x = F.relu(x)
+        # x = self._block(x)
 
         x = self._conv_4(x)
         x = self._residual_stack(x)
@@ -954,25 +956,22 @@ class Decoder(nn.Module):
         # kernel_size=4, stride=2, padding=1, output_padding=0
         # kernel_size=3, stride=2, padding=1, output_padding=1
         # kernel_size=2, stride=2, padding=0, output_padding=0
-        # self._conv_trans_1 = nn.ConvTranspose2d(in_channels=num_hiddens, 
-        #                                         out_channels=num_hiddens//2,
-        #                                         kernel_size=3, stride=2, padding=1, output_padding=1)
-        # self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
-        #                                         out_channels=num_hiddens//2,
-        #                                         kernel_size=3, stride=2, padding=1, output_padding=1)
-        # self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
-        #                                         out_channels=num_channels,
-        #                                         kernel_size=3, stride=2, padding=1, output_padding=1)
+        self._conv_trans_1 = nn.ConvTranspose2d(in_channels=num_hiddens, 
+                                                out_channels=num_hiddens//2,
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
+        self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
+                                                out_channels=num_hiddens//2,
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
+        self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
+                                                out_channels=num_channels,
+                                                kernel_size=3, stride=2, padding=1, output_padding=1)
 
         # # (2021/03)
-        # self._conv_trans_1 = ConvTBlock(num_hiddens, num_hiddens//2)
-        # self._conv_trans_2 = ConvTBlock(num_hiddens//2, num_hiddens//4)
-        # self._conv_trans_3 = ConvTBlock(num_hiddens//4, num_channels)
-        self._block = nn.Sequential(
-            ConvTBlock(num_hiddens, num_hiddens//2, 4, 2, 1),
-            ConvTBlock(num_hiddens//2, num_hiddens//4, 4, 2, 1),
-            ConvTBlock(num_hiddens//4, num_channels, 4, 2, 1)
-        )
+        # self._block = nn.Sequential(
+        #     ConvTBlock(num_hiddens, num_hiddens//2, 4, 2, 1),
+        #     ConvTBlock(num_hiddens//2, num_hiddens//4, 4, 2, 1),
+        #     ConvTBlock(num_hiddens//4, num_channels, 4, 2, 1)
+        # )
 
         # # (2021/03)
         # self._block = nn.Sequential(
@@ -1010,12 +1009,13 @@ class Decoder(nn.Module):
         x = self._conv_1(x)
         x = self._residual_stack(x)
         
-        # x = self._conv_trans_1(x)        
-        # x = self._conv_trans_2(x)
-        # x = self._conv_trans_3(x)
-        #x = torch.sigmoid(x)
-        
-        x = self._block(x)
+        x = self._conv_trans_1(x)
+        x = F.relu(x)
+        x = self._conv_trans_2(x)
+        x = F.relu(x)
+        x = self._conv_trans_3(x)
+        # x = torch.sigmoid(x)
+        # x = self._block(x)
 
         return x
 
