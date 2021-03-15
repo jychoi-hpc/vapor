@@ -867,7 +867,7 @@ class ConvTBlock(nn.Module):
         super(ConvTBlock, self).__init__()
         self._block = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
-            nn.BatchNorm2d(out_channels),
+            #nn.BatchNorm2d(out_channels),
             nn.ReLU(True)
         )
 
