@@ -335,7 +335,7 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
         nvp = nsize[3]
         start = (iphi,0,0,0)
         count = (nphi,nmu,nnodes,nvp)
-        logging.info (f"Reading: {start} {count}")
+        logging.info (f"Reading: {fname} {start} {count}")
         i_f = f.read('i_f', start=start, count=count).astype('float64')
 
     if i_f.shape[3] == 31:
@@ -581,7 +581,7 @@ def average_gradients(model):
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
-def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False, conditional=False):
+def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False, conditional=False):
     """
     Reconstructing data based on a trained model
     """
@@ -590,8 +590,8 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     with torch.no_grad():
         lx = list()
         ly = list()
-        for i in range(0,len(Zif),num_channels):
-            X = Zif[i:i+num_channels,:,:]
+        for i in range(0,len(Xif),num_channels):
+            X = Xif[i:i+num_channels,:,:]
             N = X.astype(np.float32)
             lx.append(N)
             # ly.append(zlb[i])
@@ -669,11 +669,11 @@ def recon(model, Zif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     else:
         return (X0, Xbar, np.mean(X0, axis=(1,2)), Xenc)
 
-def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None, conditional=False):
+def estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname, fname=None, conditional=False, nosort=False):
     """
     Error calculation
     """
-    X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=conditional)
+    X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=conditional)
 
     rmse_list = list()
     abs_list = list()
@@ -689,6 +689,8 @@ def estimate_error(model, Zif, zmin, zmax, num_channels, modelname, fname=None, 
     
     if fname is not None:
         od = np.argsort(abs_list)[::-1]
+        if nosort:
+            od = np.arange(len(abs_list))
         idx = od[:8]
         dat = torch.cat((torch.tensor(Zif[idx,np.newaxis,:,:]),torch.tensor(Xbar[idx,np.newaxis,:,:])))
         #grid_img = make_grid(dat)
@@ -1695,6 +1697,7 @@ def main():
     parser.add_argument('--fno_rescale', help='rescale fno', type=int, default=1)
     parser.add_argument('--vgg', help='vgg', action='store_true')
     parser.add_argument('--conditional', help='conditional', action='store_true')
+    parser.add_argument('--hr', help='high resolution', action='store_true')
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -1849,6 +1852,7 @@ def main():
         if args.splitfiles:
             timesteps = np.array_split(np.array(timesteps), size)[rank]
         f0_data_list = list()
+        hr_data_list = list()
         logging.info (f'Data dir: {args.datadir}')
         for istep in timesteps:
             logging.info (f'Reading: {istep}')
@@ -1864,6 +1868,9 @@ def main():
                 nextnode_arr = xgcexp.nextnode_arr if args.untwist else None
                 _out = read_f0_nodes(istep, node_list, expdir=args.datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                 f0_data_list.append(_out)
+                if args.hr:
+                    _out2 = read_f0_nodes(istep, node_list, expdir=args.datadir+'_4x', iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
+                    hr_data_list.append(_out2)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
@@ -1872,6 +1879,7 @@ def main():
         lst = list(zip(*f0_data_list))
 
         Z0 = np.r_[(lst[0])]
+        Xif = np.r_[(lst[1])]
         Zif = np.r_[(lst[1])]
         zmu = np.r_[(lst[2])]
         zsig = np.r_[(lst[3])]
@@ -1885,8 +1893,17 @@ def main():
         #Zif = (Zif - np.min(Zif))/(np.max(Zif)-np.min(Zif))
         #Zif = (Zif - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
 
+        if args.hr:
+            lst = list(zip(*hr_data_list))
+            Zif = np.r_[(lst[1])]
+            zmu = np.r_[(lst[2])]
+            zsig = np.r_[(lst[3])]
+            zmin = np.r_[(lst[4])]
+            zmax = np.r_[(lst[5])]
+
     if args.dataset == 'nstx':
         Z0, Zif, zmu, zsig, zmin, zmax, zlb = read_nstx(args.datadir, args.offset, args.nframes)
+        Xif = Zif
 
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
     log ('Minimum training epoch:', Zif.shape[0]/batch_size)
@@ -2071,8 +2088,9 @@ def main():
     ## Preparing training and validation set
     lx = list()
     ly = list()
-    for i in range(0,len(Zif)-num_channels+1,num_channels//args.overwrap):
-        X = Zif[i:i+num_channels,:,:]
+    lh = list()
+    for i in range(0,len(Xif)-num_channels+1,num_channels//args.overwrap):
+        X = Xif[i:i+num_channels,:,:]
         mu = zmu[i:i+num_channels]
         sig = zsig[i:i+num_channels]
         N = X.astype(np.float32)
@@ -2082,10 +2100,19 @@ def main():
         #N = (X - mu[:,np.newaxis,np.newaxis])/sig[:,np.newaxis,np.newaxis]
         lx.append(N)
         ly.append(zlb[i:i+num_channels])
+        if args.hr:
+            H = Zif[i:i+num_channels,:,:]
+            H = H.astype(np.float32)
+            lh.append(H)
+        else:
+            lh.append(0)
 
     _lx = [ x[0,:] for x in lx ]
     data_variance = np.var(_lx, dtype=np.float64)
     log ('data_variance', data_variance)
+    if args.hr:
+        _lh = [ x[0,:] for x in lh ]
+        hr_data_variance = np.var(_lh, dtype=np.float64)
 
     # %% 
     # Loadding
@@ -2093,8 +2120,8 @@ def main():
     # training_data = torch.utils.data.TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
     # validation_data = torch.utils.data.TensorDataset(torch.tensor(X_test), torch.tensor(y_test))    
     # (2020/11) Temporary. Use all data for training
-    training_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
-    validation_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly))
+    training_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly), torch.tensor(lh))
+    validation_data = torch.utils.data.TensorDataset(torch.tensor(lx), torch.tensor(ly), torch.tensor(lh))
 
     training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
     validation_loader = DataLoader(validation_data, batch_size=batch_size, shuffle=True, pin_memory=True)
@@ -2187,9 +2214,16 @@ def main():
     ns = 0.0 
     t0 = time.time()
     for i in xrange(istart, istart+num_training_updates):
-        (data, lb) = next(iter(training_loader))
+        (data, lb, hr_data) = next(iter(training_loader))
         # print ("Training:", lb)
         data = data.to(device)
+        if args.hr:
+            hr_data = hr_data.to(device)
+            hr_data_variance = hr_data_variance
+        else:
+            hr_data = data
+            hr_data_variance = data_variance
+
         if args.noise is not None:
             ns = torch.normal(mean=0.0, std=data.detach()*args.noise)
 
@@ -2199,11 +2233,11 @@ def main():
             vq_loss, data_recon, perplexity, dloss = model(data+ns)
             ## mean squared error: torch.mean((data_recon - data)**2)
             ## relative variance
-            recon_error = F.mse_loss(data_recon, data) / data_variance
+            recon_error = F.mse_loss(data_recon, hr_data) / hr_data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
             if args.physicsloss and (i % args.physicsloss_interval == 0):
                 # den_err, u_para_err, T_perp_err, T_para_err = physics_loss_con(data, lb, data_recon, executor=executor)
-                den_err, u_para_err, T_perp_err, T_para_err = physics_loss(data, lb, data_recon)
+                den_err, u_para_err, T_perp_err, T_para_err = physics_loss(hr_data, lb, data_recon)
                 # ds = torch.mean(data_recon.cpu().data.numpy()**2)
                 if i % args.log_interval == 0:
                     print ('Physics loss:', den_err, u_para_err, T_perp_err, T_para_err)
@@ -2226,8 +2260,8 @@ def main():
 
         if args.model == 'vae':
             recon_batch, mu, logvar = model(data)
-            loss = model.loss_function(recon_batch, data, mu, logvar)
-            recon_error = F.mse_loss(recon_batch, data.view(-1, nx*ny)) / data_variance
+            loss = model.loss_function(recon_batch, hr_data, mu, logvar)
+            recon_error = F.mse_loss(recon_batch, hr_data.view(-1, nx*ny)) / hr_data_variance
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss.backward()
@@ -2240,7 +2274,7 @@ def main():
 
             # vq_loss, data_recon, perplexity, dloss = model(data+ns)
             vq_loss, data_recon, perplexity, dloss = model(data+ns)
-            recon_error = F.mse_loss(data_recon, data) / data_variance
+            recon_error = F.mse_loss(data_recon, hr_data) / hr_data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
 
             dout = discriminator(data_recon)
@@ -2253,7 +2287,7 @@ def main():
 
             #  Train Discriminator
             optimizer_D.zero_grad()
-            real_dout = discriminator(data)
+            real_dout = discriminator(hr_data)
             fake_dout = discriminator(data_recon.detach())
             real_loss = adversarial_loss(real_dout, valid)
             fake_loss = adversarial_loss(fake_dout, fake)
@@ -2264,7 +2298,7 @@ def main():
 
         if args.model == 'ae':
             recon_batch = model(data)
-            recon_error = F.mse_loss(recon_batch, data) / data_variance
+            recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
             #l1loss = nn.L1Loss()
             #recon_error = l1loss(recon_batch, data) 
             perplexity = torch.tensor(0)
@@ -2275,7 +2309,7 @@ def main():
 
         if args.model == 'ae2d':
             recon_batch = model(data)
-            recon_error = F.mse_loss(recon_batch, data) / data_variance
+            recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss = recon_error
@@ -2287,13 +2321,14 @@ def main():
         train_res_physics_error.append(physics_error.item())
 
         if args.resampling and (i % resampling_interval == 0):
-            err_list, _ = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, conditional=args.conditional)
+            err_list, _ = estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname=args.model, conditional=args.conditional)
             err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
             lxx = [ lx[i] for i in idx ]
             lyy = [ ly[i] for i in idx ]
+            lhh = [ lh[i] for i in idx ]
 
-            training_data = torch.utils.data.TensorDataset(torch.tensor(lxx), torch.tensor(lyy))
+            training_data = torch.utils.data.TensorDataset(torch.tensor(lxx), torch.tensor(lyy), torch.tensor(lhh))
             training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
             total_trained[idx] += 1
 
@@ -2316,7 +2351,7 @@ def main():
             fname = None
             if (i % args.checkpoint_interval == 0) and (rank == 0):
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
-            rmse_list, abserr_list = estimate_error(model, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
+            rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
             logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
@@ -2326,9 +2361,13 @@ def main():
     # %%
     model.eval()
     with torch.no_grad():
-        (valid_originals, valid_labels) = next(iter(validation_loader))
+        (valid_originals, valid_labels, hr_originals) = next(iter(validation_loader))
         valid_originals = valid_originals.to(device)
         nbatch, nchannel, dim1, dim2 = valid_originals.shape
+        if args.hr:
+            hr_originals = hr_originals.to(device)
+        else:
+            hr_originals = valid_originals
 
         if args.model == 'vqvae':
             if model._grid is not None:
@@ -2377,8 +2416,8 @@ def main():
             # logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
         logging.info ('Reconstructing ...')
-        X0, Xbar, xmu = recon(model, Zif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
-        log (Zif.shape, Xbar.shape)
+        X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
+        log (Xif.shape, Xbar.shape)
 
         rmse_list = list()
         abs_list = list()
