@@ -1673,6 +1673,7 @@ def main():
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
+    parser.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)', default='hr_data')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
     # parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
     parser.add_argument('--surfid', help='flux surface index')
