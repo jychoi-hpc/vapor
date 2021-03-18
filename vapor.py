@@ -1318,21 +1318,21 @@ class VAE(nn.Module):
 Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
 """
 class AE(nn.Module):
-    def __init__(self, **kwargs):
+    def __init__(self, input_dim, embedding_dim):
         super().__init__()
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
         self.encoder = nn.Sequential(
-            nn.Linear(kwargs["input_shape"], 400),
+            nn.Linear(input_dim, embedding_dim),
             nn.LeakyReLU(True),
-            nn.Linear(400, 400),
+            nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
             )
 
         self.decoder = nn.Sequential(
-            nn.Linear(400, 400),
+            nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
-            nn.Linear(400, kwargs["input_shape"]),
+            nn.Linear(embedding_dim, input_dim),
             nn.LeakyReLU(True),
             )
 
@@ -2150,7 +2150,7 @@ def main():
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae':
-        model = AE(input_shape=num_channels*ny*nx).to(device)
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
 
     if args.model == 'ae2d':
         model = Autoencoder().to(device)
