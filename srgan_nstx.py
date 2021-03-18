@@ -29,10 +29,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+import adios2 as ad2
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
 parser.add_argument("--n_epochs", type=int, default=20, help="number of epochs of training (default: %(default)s)")
-parser.add_argument("--dataset_name", type=str, default="xgc_images-d3d_coarse_v2", help="name of the dataset (default: %(default)s)")
+parser.add_argument("--dataset_name", type=str, default="nstx", help="name of the dataset (default: %(default)s)")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient (default: %(default)s)")
@@ -46,11 +48,10 @@ parser.add_argument("--sample_interval", type=int, default=1000, help="interval 
 parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between model checkpoints (default: %(default)s)")
 parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (default: %(default)s)')
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
+parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
 group = parser.add_mutually_exclusive_group()
-group.add_argument('--N20', help='N20 model', action='store_const', dest='model', const='N20')
-group.add_argument('--N200', help='N200 model', action='store_const', dest='model', const='N200')
-group.add_argument('--N1000', help='N1000 model', action='store_const', dest='model', const='N1000')
-parser.set_defaults(model='N20')
+group.add_argument('--N1024', help='N1024 model', action='store_const', dest='model', const='N1024')
+parser.set_defaults(model='N1024')
 opt = parser.parse_args()
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
@@ -72,7 +73,7 @@ hr_shape = (opt.hr_height, opt.hr_width)
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
 discriminator = Discriminator(input_shape=(opt.nchannel, *hr_shape))
-modelfile = 'xgc-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
+modelfile = 'nstx-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
 feature_extractor = XGCFeatureExtractor(modelfile)
 
 # Set feature extractor to inference mode
@@ -104,12 +105,23 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 mean = 0.121008*2
 std = 0.217191
 
-dataloader = DataLoader(
-    ImageDataset("%s" % opt.dataset_name, hr_shape=hr_shape, mean=mean, std=std),
-    batch_size=opt.batch_size,
-    shuffle=True,
-    num_workers=opt.n_cpu,
-)
+# %%
+offset = 159065
+length = opt.nframes
+with ad2.open('nstx_data_ornl_demo_v2.bp','r') as f:
+    start=(offset,0,0) 
+    count=(length,64,80)
+    gpiData = f.read('gpiData', start=start, count=count)
+print (gpiData.shape)
+
+X = gpiData.astype(np.float32)
+xmin = np.min(X, axis=(1,2))
+xmax = np.max(X, axis=(1,2))
+X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+
+X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::2,::2]), torch.tensor(X[:,np.newaxis,:,:])
+training_data = torch.utils.data.TensorDataset(X_lr, X_hr)
+dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=True)
 
 # ----------
 #  Training
@@ -119,14 +131,16 @@ for epoch in range(opt.epoch, opt.n_epochs):
     for i, imgs in enumerate(dataloader):
 
         # Configure model input
-        imgs_lr = Variable(imgs["lr"].type(Tensor))
-        imgs_hr = Variable(imgs["hr"].type(Tensor))
+        imgs_lr = imgs[0]
+        imgs_hr = imgs[1]
 
-        n = (64-imgs_lr.shape[2])//2
-        imgs_lr = F.pad(imgs_lr, (n,n,n,n), "constant", -mean/std)
+        n2 = (64-imgs_lr.shape[3])//2
+        n1 = (64-imgs_lr.shape[2])//2
+        imgs_lr = F.pad(imgs_lr, (n2,n2,n1,n1), "constant", -mean/std)
 
-        n = (256-imgs_hr.shape[2])//2
-        imgs_hr = F.pad(imgs_hr, (n,n,n,n), "constant", -mean/std)
+        n2 = (256-imgs_hr.shape[3])//2
+        n1 = (256-imgs_hr.shape[2])//2
+        imgs_hr = F.pad(imgs_hr, (n2,n2,n1,n1), "constant", -mean/std)
         #print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
 
         # Adversarial ground truths
