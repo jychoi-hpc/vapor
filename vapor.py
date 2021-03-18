@@ -1322,37 +1322,29 @@ class AE(nn.Module):
         super().__init__()
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
-        self.encoder_hidden_layer = nn.Linear(
-            in_features=kwargs["input_shape"], out_features=800
-        )
-        self.encoder_output_layer = nn.Linear(
-            in_features=800, out_features=400
-        )
-        self.decoder_hidden_layer = nn.Linear(
-            in_features=400, out_features=800
-        )
-        self.decoder_output_layer = nn.Linear(
-            in_features=800, out_features=kwargs["input_shape"]
-        )
+        self.encoder = nn.Sequential(
+            nn.Linear(kwargs["input_shape"], 400),
+            nn.LeakyReLU(True),
+            nn.Linear(400, 400),
+            nn.LeakyReLU(True),
+            )
 
-    def forward(self, features):
-        nbatch, nc, nx, ny = features.shape
-        features = features.view(nbatch, -1)
+        self.decoder = nn.Sequential(
+            nn.Linear(400, 400),
+            nn.LeakyReLU(True),
+            nn.Linear(400, kwargs["input_shape"]),
+            nn.LeakyReLU(True),
+            )
 
-        f0 = torch.nn.ReLU()
-        f1 = torch.nn.LeakyReLU()
-        f2 = torch.nn.Tanh()
-        activation = self.encoder_hidden_layer(features)
-        activation = f1(activation)
-        code = self.encoder_output_layer(activation)
-        code = f1(code)
-        activation = self.decoder_hidden_layer(code)
-        activation = f1(activation)
-        activation = self.decoder_output_layer(activation)
-        reconstructed = f1(activation)
+    def forward(self, x):
+        nbatch, nc, nx, ny = x.shape
+        x = x.view(nbatch, -1)
 
-        reconstructed = reconstructed.view(nbatch, nc, nx, ny)
-        return reconstructed
+        x = self.encoder(x)
+        x = self.decoder(x)
+
+        x = x.view(nbatch, nc, nx, ny)
+        return x
 
 # %%
 """
@@ -2458,6 +2450,12 @@ def main():
         if args.model == 'vqvae':
             num_params = 0
             for k, v in model._decoder.state_dict().items():
+                num_params += v.numel()
+            info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
+
+        if args.model == 'ae':
+            num_params = 0
+            for k, v in model.decoder.state_dict().items():
                 num_params += v.numel()
             info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
