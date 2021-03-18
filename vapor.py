@@ -607,8 +607,11 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
             elif modelname in ('ae','ae2d'):
-                valid_reconstructions = model(valid_originals)
+                valid_encode = model.encode(valid_originals)
+                valid_reconstructions = model.decode(valid_encode)
+                
                 lz.append((valid_reconstructions).cpu().data.numpy())
+                encode_list.append(valid_encode)
             else:
                 if model._grid is not None:
                     x = valid_originals
@@ -1322,28 +1325,43 @@ class AE(nn.Module):
         super().__init__()
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
-        self.encoder = nn.Sequential(
+        self._encoder = nn.Sequential(
             nn.Linear(input_dim, embedding_dim),
             nn.LeakyReLU(True),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
             )
 
-        self.decoder = nn.Sequential(
+        self._decoder = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
             nn.Linear(embedding_dim, input_dim),
             nn.LeakyReLU(True),
             )
+    
+    def encode(self, x):
+        self.nbatch, self.nc, self.nx, self.ny = x.shape
+        x = x.view(self.nbatch, -1)
+
+        x = self._encoder(x)
+        return x
+
+    def decode(self, x):
+        x = self._decoder(x)
+
+        x = x.view(self.nbatch, self.nc, self.nx, self.ny)
+        return x
 
     def forward(self, x):
-        nbatch, nc, nx, ny = x.shape
-        x = x.view(nbatch, -1)
+        x = self.encode(x)
+        x = self.decode(x)
+        # nbatch, nc, nx, ny = x.shape
+        # x = x.view(nbatch, -1)
 
-        x = self.encoder(x)
-        x = self.decoder(x)
+        # x = self.encoder(x)
+        # x = self.decoder(x)
 
-        x = x.view(nbatch, nc, nx, ny)
+        # x = x.view(nbatch, nc, nx, ny)
         return x
 
 # %%
@@ -2455,7 +2473,7 @@ def main():
 
         if args.model == 'ae':
             num_params = 0
-            for k, v in model.decoder.state_dict().items():
+            for k, v in model._decoder.state_dict().items():
                 num_params += v.numel()
             info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
