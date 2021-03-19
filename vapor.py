@@ -1880,7 +1880,7 @@ def main():
                 _out = read_f0_nodes(istep, node_list, expdir=args.datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                 f0_data_list.append(_out)
                 if args.hr:
-                    _out2 = read_f0_nodes(istep, node_list, expdir=args.datadir+'_4x', iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
+                    _out2 = read_f0_nodes(istep, node_list, expdir=args.hr_datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                     hr_data_list.append(_out2)
             else:
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
