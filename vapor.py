@@ -2464,6 +2464,7 @@ def main():
             num_params += v.numel()
         info ('-'*50)
         info ('%50s\t%20s\t%10d'%('Total', '', num_params))
+        info ('All (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
         if args.model == 'vqvae':
             num_params = 0
