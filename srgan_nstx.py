@@ -69,6 +69,7 @@ logging.debug('imgdir: %s'%imgdir)
 logging.debug('modeldir: %s'%modeldir)
 
 cuda = torch.cuda.is_available()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 hr_shape = (opt.hr_height, opt.hr_width)
 print ('hr_shape:', hr_shape)
@@ -137,8 +138,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
     for i, imgs in enumerate(dataloader):
 
         # Configure model input
-        imgs_lr = imgs[0]
-        imgs_hr = imgs[1]
+        imgs_lr = imgs[0].to(device)
+        imgs_hr = imgs[1].to(device)
         # print ('imgs_lr, imgs_hr:', list(imgs_lr.shape), list(imgs_hr.shape))
         
         # n2 = (64-imgs_lr.shape[3])//2
