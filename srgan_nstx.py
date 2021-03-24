@@ -33,7 +33,7 @@ import adios2 as ad2
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
-parser.add_argument("--n_epochs", type=int, default=20, help="number of epochs of training (default: %(default)s)")
+parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training (default: %(default)s)")
 parser.add_argument("--dataset_name", type=str, default="nstx", help="name of the dataset (default: %(default)s)")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
@@ -41,11 +41,11 @@ parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first 
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient (default: %(default)s)")
 parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay (default: %(default)s)")
 parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation (default: %(default)s)")
-parser.add_argument("--hr_height", type=int, default=256, help="high res. image height (default: %(default)s)")
-parser.add_argument("--hr_width", type=int, default=256, help="high res. image width (default: %(default)s)")
+parser.add_argument("--hr_height", type=int, default=64, help="high res. image height (default: %(default)s)")
+parser.add_argument("--hr_width", type=int, default=80, help="high res. image width (default: %(default)s)")
 # parser.add_argument("--channels", type=int, default=1, help="number of image channels (default: %(default)s)")
 parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples (default: %(default)s)")
-parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between model checkpoints (default: %(default)s)")
+parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between model checkpoints (default: %(default)s)")
 parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (default: %(default)s)')
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
 parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
@@ -65,10 +65,13 @@ imgdir = 'srgan_images-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
 modeldir = 'srgan_models-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
 os.makedirs(imgdir, exist_ok=True)
 os.makedirs(modeldir, exist_ok=True)
+logging.debug('imgdir: %s'%imgdir)
+logging.debug('modeldir: %s'%modeldir)
 
 cuda = torch.cuda.is_available()
 
 hr_shape = (opt.hr_height, opt.hr_width)
+print ('hr_shape:', hr_shape)
 
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
@@ -93,8 +96,11 @@ if cuda:
 
 if opt.epoch != 0:
     # Load pretrained models
-    generator.load_state_dict(torch.load("%s/generator_%d.pth"%(modeldir, opt.epoch)))
-    discriminator.load_state_dict(torch.load("%s/discriminator_%d.pth"%(modeldir, opt.epoch)))
+    fname0 = "%s/generator_%d.pth"%(modeldir, opt.epoch)
+    fname1 = "%s/discriminator_%d.pth"%(modeldir, opt.epoch)
+    logging.debug ('Loading: %s %s'%(fname0, fname1))
+    generator.load_state_dict(torch.load(fname0))
+    discriminator.load_state_dict(torch.load(fname1))
 
 # Optimizers
 optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
@@ -119,7 +125,7 @@ xmin = np.min(X, axis=(1,2))
 xmax = np.max(X, axis=(1,2))
 X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
-X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::2,::2]), torch.tensor(X[:,np.newaxis,:,:])
+X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(X[:,np.newaxis,:,:])
 training_data = torch.utils.data.TensorDataset(X_lr, X_hr)
 dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=True)
 
@@ -133,19 +139,23 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # Configure model input
         imgs_lr = imgs[0]
         imgs_hr = imgs[1]
+        # print ('imgs_lr, imgs_hr:', list(imgs_lr.shape), list(imgs_hr.shape))
+        
+        # n2 = (64-imgs_lr.shape[3])//2
+        # n1 = (64-imgs_lr.shape[2])//2
+        # imgs_lr = F.pad(imgs_lr, (n2,n2,n1,n1), "constant", -mean/std)
 
-        n2 = (64-imgs_lr.shape[3])//2
-        n1 = (64-imgs_lr.shape[2])//2
-        imgs_lr = F.pad(imgs_lr, (n2,n2,n1,n1), "constant", -mean/std)
-
-        n2 = (256-imgs_hr.shape[3])//2
-        n1 = (256-imgs_hr.shape[2])//2
-        imgs_hr = F.pad(imgs_hr, (n2,n2,n1,n1), "constant", -mean/std)
-        #print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
+        # n2 = (256-imgs_hr.shape[3])//2
+        # n1 = (256-imgs_hr.shape[2])//2
+        # imgs_hr = F.pad(imgs_hr, (n2,n2,n1,n1), "constant", -mean/std)
+        # print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
 
         # Adversarial ground truths
-        valid = Variable(Tensor(np.ones((imgs_lr.size(0), *discriminator.output_shape))), requires_grad=False)
-        fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *discriminator.output_shape))), requires_grad=False)
+        output_shape = discriminator.output_shape
+        # (2021/03) Hard coding for now
+        # output_shape = (1,8,10)
+        valid = Variable(Tensor(np.ones((imgs_lr.size(0), *output_shape))), requires_grad=False)
+        fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *output_shape))), requires_grad=False)
 
         # ------------------
         #  Train Generators
