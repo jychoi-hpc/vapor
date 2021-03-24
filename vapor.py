@@ -612,6 +612,15 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 
                 lz.append((valid_reconstructions).cpu().data.numpy())
                 encode_list.append(valid_encode)
+            elif modelname == 'ae-vqvae':
+                valid_encode = model.encode(valid_originals)
+                valid_reconstructions = model.decode(valid_encode)
+
+                model2 = dmodel
+                vq_loss, data_recon, perplexity, dloss = model2(valid_reconstructions)
+
+                lz.append((data_recon).cpu().data.numpy())
+                encode_list.append(valid_encode)
             else:
                 if model._grid is not None:
                     x = valid_originals
@@ -1683,7 +1692,7 @@ def main():
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='data')
-    parser.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)', default='hr_data')
+    parser.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)')
     parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
     # parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
     parser.add_argument('--surfid', help='flux surface index')
@@ -1747,6 +1756,7 @@ def main():
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
+    group.add_argument('--ae-vqvae', help='ae-vqvae model', action='store_const', dest='model', const='ae-vqvae')
     group.add_argument('--ae2d', help='ae conv2d model', action='store_const', dest='model', const='ae2d')
     parser.set_defaults(model='vqvae')
     args = parser.parse_args()
@@ -1880,6 +1890,7 @@ def main():
                 _out = read_f0_nodes(istep, node_list, expdir=args.datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                 f0_data_list.append(_out)
                 if args.hr:
+                    assert(args.hr_datadir is not None)
                     _out2 = read_f0_nodes(istep, node_list, expdir=args.hr_datadir, iphi=args.iphi, nextnode_arr=nextnode_arr, rescale=args.rescaleinput)
                     hr_data_list.append(_out2)
             else:
@@ -2170,6 +2181,16 @@ def main():
     if args.model == 'ae':
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
 
+    if args.model == 'ae-vqvae':
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
+
+        model2 = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
+                    num_embeddings, embedding_dim, 
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional).to(device)
+
+        optimizer2 = optim.Adam(model2.parameters(), lr=learning_rate, amsgrad=False)
+
     if args.model == 'ae2d':
         model = Autoencoder().to(device)
 
@@ -2327,6 +2348,26 @@ def main():
             loss.backward()
             optimizer.step()
 
+        if args.model == 'ae-vqvae':
+            recon_batch = model(data+ns)
+            recon_error = F.mse_loss(recon_batch, hr_data.detach()) / hr_data_variance
+            #l1loss = nn.L1Loss()
+            #recon_error = l1loss(recon_batch, data) 
+            perplexity = torch.tensor(0)
+            physics_error = torch.tensor(0.0)
+            loss = recon_error
+            loss.backward()
+            optimizer.step()
+
+            optimizer2.zero_grad()
+            vq_loss, data_recon, perplexity, dloss = model2(recon_batch.detach())
+            recon2_error = F.mse_loss(data_recon, hr_data.detach()) / hr_data_variance
+            physics2_error = torch.tensor(0.0).to(data_recon.device)
+            feature_loss = torch.tensor(0.0).to(data_recon.device)
+            loss2 = alpha*recon2_error + beta*vq_loss + gamma*physics2_error + delta*dloss + zeta*feature_loss
+            loss2.backward()
+            optimizer2.step()
+
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error.item())
@@ -2427,6 +2468,8 @@ def main():
             # logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
         logging.info ('Reconstructing ...')
+        if args.model == 'ae-vqvae':
+            dmodel = model2
         X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
         log (Xif.shape, Xbar.shape)
 
