@@ -166,8 +166,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         # Generate a high resolution image from low resolution input
         gen_hr = generator(imgs_lr)
-        # print ('imgs_lr', imgs_lr.min(), imgs_lr.max(), 'gen_hr', gen_hr.min(), gen_hr.max())
-
+        # print ('imgs_lr', imgs_lr.min().item(), imgs_lr.max().item(), imgs_lr.mean().item())
+        # print ('gen_hr', gen_hr.min().item(), gen_hr.max().item(), gen_hr.mean().item())
+        
         # Adversarial loss
         # valid.shape: torch.Size([16, 1, 16, 16])
         # fake.shape: torch.Size([16, 1, 16, 16])
