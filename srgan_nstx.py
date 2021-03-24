@@ -50,8 +50,9 @@ parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (d
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
 parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
 group = parser.add_mutually_exclusive_group()
-group.add_argument('--N1024', help='N1024 model', action='store_const', dest='model', const='N1024')
-parser.set_defaults(model='N1024')
+group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
+group.add_argument('--XGC', help='use XGC 1-channel model', action='store_const', dest='model', const='XGC')
+parser.set_defaults(model='XGC')
 opt = parser.parse_args()
 
 logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
@@ -77,8 +78,12 @@ print ('hr_shape:', hr_shape)
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
 discriminator = Discriminator(input_shape=(opt.nchannel, *hr_shape))
-modelfile = 'nstx-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
-feature_extractor = XGCFeatureExtractor(modelfile)
+if opt.model == 'VGG':
+    assert (opt.nchannel == 3)
+    feature_extractor = FeatureExtractor()
+else:
+    modelfile = 'nstx-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
+    feature_extractor = XGCFeatureExtractor(modelfile)
 
 # Set feature extractor to inference mode
 feature_extractor.eval()
@@ -127,6 +132,9 @@ xmax = np.max(X, axis=(1,2))
 X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
 X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(X[:,np.newaxis,:,:])
+if opt.nchannel == 3:
+    X_lr = torch.cat((X_lr,X_lr,X_lr), axis=1)
+    X_hr = torch.cat((X_hr,X_hr,X_hr), axis=1)
 training_data = torch.utils.data.TensorDataset(X_lr, X_hr)
 dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=True)
 
@@ -176,14 +184,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
 
         # Content loss
-        if opt.nchannel == 3:
-            _gen_hr = torch.cat((gen_hr, gen_hr, gen_hr), dim=1)
-            _imgs_hr = torch.cat((imgs_hr, imgs_hr, imgs_hr), dim=1)
-            gen_features = feature_extractor(_gen_hr)
-            real_features = feature_extractor(_imgs_hr)
-        else:
-            gen_features = feature_extractor(gen_hr)
-            real_features = feature_extractor(imgs_hr)
+        gen_features = feature_extractor(gen_hr)
+        real_features = feature_extractor(imgs_hr)
         loss_content = criterion_content(gen_features, real_features.detach())
         #loss_content = criterion_content(gen_hr, imgs_hr)
 
