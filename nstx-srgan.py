@@ -49,6 +49,7 @@ parser.add_argument("--checkpoint_interval", type=int, default=10, help="interva
 parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (default: %(default)s)')
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
 parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
+parser.add_argument('--nofeatureloss', help='no feature loss', action='store_true')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
@@ -191,8 +192,11 @@ for epoch in range(opt.epoch, opt.n_epochs):
         #loss_content = criterion_content(gen_hr, imgs_hr)
 
         # Total loss
-        loss_G = loss_content + 1e-3 * loss_GAN
-
+        if opt.nofeatureloss:
+            loss_G = loss_GAN
+        else:
+            loss_G = loss_content + 1e-3 * loss_GAN
+        
         loss_G.backward()
         optimizer_G.step()
 
