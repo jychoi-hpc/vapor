@@ -1688,7 +1688,7 @@ def main():
     parser.add_argument('-R', '--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
     parser.add_argument('-L', '--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
     parser.add_argument('-C', '--num_channels', help='num_channels', type=int, default=1)
-    parser.add_argument('-B', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=16)
+    parser.add_argument('-B', '--batch_size', help='batch_size (default: %(default)s)', type=int, default=32)
     parser.add_argument('-d', '--device_id', help='device_id (default: %(default)s)', type=int, default=0)
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='')
