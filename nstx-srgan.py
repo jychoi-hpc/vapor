@@ -245,9 +245,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
             _imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
             img_grid = torch.cat((_imgs_lr, _imgs_hr, _gen_hr), -1)
             save_image(img_grid, "%s/%d.png" % (prefix, batches_done), normalize=False)
-
+    
+    logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
         # Save model checkpoints
         torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch))
         torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch))
-        logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
