@@ -207,10 +207,10 @@ if __name__ == "__main__":
             ood = np.argsort(od)
             label = np.digitize(range(len(od)), np.linspace(0, len(od), 1024+1, dtype=np.int))-1
             print (min(label), max(label))
-            np.save('nstx_data_ornl_demo_v2-label.npy', label[ood])
+            np.save('nstx-label-%s.npy'%opt.model, label[ood])
             nclass = label
         else:
-            nclass = np.load('nstx_data_ornl_demo_v2-label.npy')[:length]
+            nclass = np.load('nstx-label-%s.npy'%opt.model)[:length]
         print (nclass.shape)
 
     unique, counts = np.unique(nclass, return_counts=True)
@@ -287,7 +287,6 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             
             with torch.set_grad_enabled(True):
-                import pdb; pdb.set_trace()
                 outputs  = model(inputs+ns)
                 _, preds = torch.max(outputs, 1)
                 loss = criterion(outputs, labels)
