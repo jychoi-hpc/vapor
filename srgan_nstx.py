@@ -143,6 +143,7 @@ dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_siz
 # ----------
 
 for epoch in range(opt.epoch, opt.n_epochs):
+    abs_list = list()
     for i, imgs in enumerate(dataloader):
 
         # Configure model input
@@ -214,6 +215,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # --------------
         #  Log Progress
         # --------------
+        abserr = torch.max(torch.abs(gen_hr.detach()-imgs_hr.detach())).item()
+        abs_list.append(abserr)
 
         sys.stdout.write(
             "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]\n"
@@ -223,14 +226,15 @@ for epoch in range(opt.epoch, opt.n_epochs):
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
             # Save image grid with upsampled inputs and SRGAN outputs
-            imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4, mode='bicubic')
-            gen_hr = make_grid(gen_hr, nrow=1, normalize=True)
-            imgs_lr = make_grid(imgs_lr, nrow=1, normalize=True)
-            imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
-            img_grid = torch.cat((imgs_lr, imgs_hr, gen_hr), -1)
+            _imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4, mode='nearest')
+            _gen_hr = make_grid(gen_hr, nrow=1, normalize=True)
+            _imgs_lr = make_grid(_imgs_lr, nrow=1, normalize=True)
+            _imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
+            img_grid = torch.cat((_imgs_lr, _imgs_hr, _gen_hr), -1)
             save_image(img_grid, "%s/%d.png" % (imgdir, batches_done), normalize=False)
 
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
         # Save model checkpoints
         torch.save(generator.state_dict(), "%s/generator_%d.pth" % (modeldir, epoch))
         torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (modeldir, epoch))
+        logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
