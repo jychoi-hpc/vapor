@@ -162,6 +162,7 @@ if __name__ == "__main__":
     parser.add_argument('--nchannel', help='num. of channels', type=int, default=1)
     # parser.add_argument("--hr_height", type=int, default=256, help="hr_height")
     parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation")
+    parser.add_argument('--regen', help='regen', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--N1024', help='N1024 model', action='store_const', dest='model', const='N1024')
     parser.set_defaults(model='N1024')
@@ -191,7 +192,25 @@ if __name__ == "__main__":
 
     if opt.model == 'N1024':
         ## 1024 classes
-        nclass = np.load('nstx_data_ornl_demo_v2-label.npy')[:length]
+        if opt.regen:
+            import time
+            from sklearn import manifold
+
+            n_neighbors=30
+            _X = X.reshape([len(X),-1])
+            print ("Embedding ...")
+            t0 = time.time()
+            X_iso = manifold.Isomap(n_neighbors=n_neighbors, n_components=1).fit_transform(_X)
+            print ("ISOMAP (time %.2fs)"%(time.time() - t0))
+
+            od = np.argsort(X_iso)
+            ood = np.argsort(od)
+            label = np.digitize(range(len(od)), np.linspace(0, len(od), 1024+1, dtype=np.int))-1
+            print (min(label), max(label))
+            np.save('nstx_data_ornl_demo_v2-label.npy', label[ood])
+            nclass = label
+        else:
+            nclass = np.load('nstx_data_ornl_demo_v2-label.npy')[:length]
         print (nclass.shape)
 
     unique, counts = np.unique(nclass, return_counts=True)
@@ -209,6 +228,9 @@ if __name__ == "__main__":
     # %%
     X_train, X_test, y_train, y_test = train_test_split(X, nclass, test_size=0.2)
     X_train, y_train = torch.tensor(X_train), torch.tensor(y_train)
+    if opt.nchannel == 3:
+        X_train = torch.cat((X_train,X_train,X_train), axis=1)
+
     X_test, y_test = torch.tensor(X_test), torch.tensor(y_test)
 
     training_data = torch.utils.data.TensorDataset(X_train, y_train)
@@ -265,6 +287,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             
             with torch.set_grad_enabled(True):
+                import pdb; pdb.set_trace()
                 outputs  = model(inputs+ns)
                 _, preds = torch.max(outputs, 1)
                 loss = criterion(outputs, labels)
