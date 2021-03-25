@@ -228,7 +228,12 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # --------------
         #  Log Progress
         # --------------
-        abserr = torch.max(torch.abs(gen_hr.detach()-imgs_hr.detach())).item()
+        _imgs_hr = imgs_hr.detach()
+        _gen_hr = gen_hr.detach()
+        _imgs_hr = torch.max(_imgs_hr, axis=1)[0]
+        _gen_hr = torch.max(_gen_hr, axis=1)[0]
+
+        abserr = torch.max(torch.abs(_gen_hr-_imgs_hr)).item()
         abs_list.append(abserr)
         logging.debug(
             "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] ABS: %f"
@@ -238,10 +243,20 @@ for epoch in range(opt.epoch, opt.n_epochs):
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
             # Save image grid with upsampled inputs and SRGAN outputs
-            _imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4, mode='nearest')
-            _gen_hr = make_grid(gen_hr, nrow=1, normalize=True)
+            nb, nc, nh, nw = imgs_hr.shape
+            _imgs_lr = imgs_lr
+            _imgs_hr = imgs_hr
+            _gen_hr = gen_hr
+
+            _imgs_lr = nn.functional.interpolate(_imgs_lr, scale_factor=4, mode='nearest')
+            
+            _imgs_lr = torch.max(_imgs_lr, axis=1)[0].reshape(nb, 1, nh, nw)
+            _imgs_hr = torch.max(_imgs_hr, axis=1)[0].reshape(nb, 1, nh, nw)
+            _gen_hr = torch.max(_gen_hr, axis=1)[0].reshape(nb, 1, nh, nw)
+
+            _gen_hr = make_grid(_gen_hr, nrow=1, normalize=True)
             _imgs_lr = make_grid(_imgs_lr, nrow=1, normalize=True)
-            _imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
+            _imgs_hr = make_grid(_imgs_hr, nrow=1, normalize=True)
             img_grid = torch.cat((_imgs_lr, _imgs_hr, _gen_hr), -1)
             save_image(img_grid, "%s/%d.png" % (prefix, batches_done), normalize=False)
     
