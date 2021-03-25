@@ -230,10 +230,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # --------------
         abserr = torch.max(torch.abs(gen_hr.detach()-imgs_hr.detach())).item()
         abs_list.append(abserr)
-
         logging.debug(
-            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), loss_D.item(), loss_G.item())
+            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] ABS: %g"
+            % (epoch, opt.n_epochs, i, len(dataloader), loss_D.item(), loss_G.item(), abserr)
         )
 
         batches_done = epoch * len(dataloader) + i
