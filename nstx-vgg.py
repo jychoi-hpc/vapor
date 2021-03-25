@@ -203,7 +203,7 @@ if __name__ == "__main__":
             X_iso = manifold.Isomap(n_neighbors=n_neighbors, n_components=1).fit_transform(_X)
             print ("ISOMAP (time %.2fs)"%(time.time() - t0))
 
-            od = np.argsort(X_iso)
+            od = np.argsort(X_iso[:,0])
             ood = np.argsort(od)
             label = np.digitize(range(len(od)), np.linspace(0, len(od), 1024+1, dtype=np.int))-1
             print (min(label), max(label))
@@ -227,11 +227,12 @@ if __name__ == "__main__":
     
     # %%
     X_train, X_test, y_train, y_test = train_test_split(X, nclass, test_size=0.2)
+
     X_train, y_train = torch.tensor(X_train), torch.tensor(y_train)
+    X_test, y_test = torch.tensor(X_test), torch.tensor(y_test)
     if opt.nchannel == 3:
         X_train = torch.cat((X_train,X_train,X_train), axis=1)
-
-    X_test, y_test = torch.tensor(X_test), torch.tensor(y_test)
+        X_test = torch.cat((X_test,X_test,X_test), axis=1)
 
     training_data = torch.utils.data.TensorDataset(X_train, y_train)
     validation_data = torch.utils.data.TensorDataset(X_test, y_test)
