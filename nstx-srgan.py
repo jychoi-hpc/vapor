@@ -31,6 +31,9 @@ import torch
 
 import adios2 as ad2
 
+from datetime import datetime
+from pathlib import Path
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
 parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training (default: %(default)s)")
@@ -50,31 +53,37 @@ parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (d
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
 parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
 parser.add_argument('--nofeatureloss', help='no feature loss', action='store_true')
+parser.add_argument('--log', help='log', action='store_true')
+parser.add_argument('--suffix', help='suffix')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
 parser.set_defaults(model='N1024')
 opt = parser.parse_args()
 
-logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG)
+prefix='srgan-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
+if opt.suffix is not None:
+    prefix='%s-%s'%(prefix, opt.suffix)
+Path(prefix).mkdir(parents=True, exist_ok=True)
+
+handlers = [logging.StreamHandler()]
+if opt.log:
+    suffix = datetime.now().strftime("%Y%m%d-%H%M%S")
+    pid = os.getpid()
+    fname = "%s/run-%s-%d.log"%(prefix, suffix, pid)
+    handlers.append(logging.FileHandler(fname))
+logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.DEBUG, handlers=handlers)
 
 logging.info("Command: {0}\n".format(" ".join([x for x in sys.argv]))) 
 logging.debug("All settings used:") 
 for k,v in sorted(vars(opt).items()): 
     logging.debug("\t{0}: {1}".format(k,v))
-
-imgdir = 'srgan_images-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
-modeldir = 'srgan_models-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
-os.makedirs(imgdir, exist_ok=True)
-os.makedirs(modeldir, exist_ok=True)
-logging.debug('imgdir: %s'%imgdir)
-logging.debug('modeldir: %s'%modeldir)
+logging.debug ('prefix: %s'%prefix)
 
 cuda = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 hr_shape = (opt.hr_height, opt.hr_width)
-print ('hr_shape:', hr_shape)
 
 # Initialize generator and discriminator
 generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
@@ -103,8 +112,8 @@ if cuda:
 
 if opt.epoch != 0:
     # Load pretrained models
-    fname0 = "%s/generator_%d.pth"%(modeldir, opt.epoch)
-    fname1 = "%s/discriminator_%d.pth"%(modeldir, opt.epoch)
+    fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch)
+    fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch)
     logging.debug ('Loading: %s %s'%(fname0, fname1))
     generator.load_state_dict(torch.load(fname0))
     discriminator.load_state_dict(torch.load(fname1))
@@ -125,7 +134,7 @@ with ad2.open('nstx_data_ornl_demo_v2.bp','r') as f:
     start=(offset,0,0) 
     count=(length,64,80)
     gpiData = f.read('gpiData', start=start, count=count)
-print (gpiData.shape)
+logging.debug (gpiData.shape)
 
 X = gpiData.astype(np.float32)
 xmin = np.min(X, axis=(1,2))
@@ -222,8 +231,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         abserr = torch.max(torch.abs(gen_hr.detach()-imgs_hr.detach())).item()
         abs_list.append(abserr)
 
-        sys.stdout.write(
-            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]\n"
+        logging.debug(
+            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
             % (epoch, opt.n_epochs, i, len(dataloader), loss_D.item(), loss_G.item())
         )
 
@@ -235,10 +244,10 @@ for epoch in range(opt.epoch, opt.n_epochs):
             _imgs_lr = make_grid(_imgs_lr, nrow=1, normalize=True)
             _imgs_hr = make_grid(imgs_hr, nrow=1, normalize=True)
             img_grid = torch.cat((_imgs_lr, _imgs_hr, _gen_hr), -1)
-            save_image(img_grid, "%s/%d.png" % (imgdir, batches_done), normalize=False)
+            save_image(img_grid, "%s/%d.png" % (prefix, batches_done), normalize=False)
 
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
         # Save model checkpoints
-        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (modeldir, epoch))
-        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (modeldir, epoch))
+        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch))
+        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch))
         logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
