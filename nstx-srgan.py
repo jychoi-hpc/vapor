@@ -61,7 +61,7 @@ group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='stor
 parser.set_defaults(model='N1024')
 opt = parser.parse_args()
 
-prefix='srgan-ch%d-%s-%s'%(opt.nchannel, opt.model, opt.dataset_name)
+prefix='srgan-%s-%s-ch%d'%(opt.dataset_name, opt.model, opt.nchannel)
 if opt.suffix is not None:
     prefix='%s-%s'%(prefix, opt.suffix)
 Path(prefix).mkdir(parents=True, exist_ok=True)
