@@ -55,6 +55,7 @@ parser.add_argument("--nframes", type=int, default=16_000, help="number of frame
 parser.add_argument('--nofeatureloss', help='no feature loss', action='store_true')
 parser.add_argument('--log', help='log', action='store_true')
 parser.add_argument('--suffix', help='suffix')
+parser.add_argument('--gaussian', help='apply gaussian filter', action='store_true')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
@@ -141,12 +142,18 @@ xmin = np.min(X, axis=(1,2))
 xmax = np.max(X, axis=(1,2))
 X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
+if opt.gaussian:
+    from scipy.ndimage import gaussian_filter
+    for i in range(len(X)):
+        X[i,:] = gaussian_filter(X[i,:], sigma=5)
+
 X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(X[:,np.newaxis,:,:])
 if opt.nchannel == 3:
     X_lr = torch.cat((X_lr,X_lr,X_lr), axis=1)
     X_hr = torch.cat((X_hr,X_hr,X_hr), axis=1)
 training_data = torch.utils.data.TensorDataset(X_lr, X_hr)
 dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=True)
+validationloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=False)
 
 # ----------
 #  Training
@@ -265,3 +272,28 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # Save model checkpoints
         torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch))
         torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch))
+
+# --------------
+#  Recon
+# --------------
+generator.eval()
+gen_list = list()
+with torch.no_grad():
+    for i, imgs in enumerate(validationloader):
+        # Configure model input
+        imgs_lr = imgs[0].to(device)
+        gen_hr = generator(imgs_lr)
+
+        _gen_hr = gen_hr.detach()
+        _gen_hr = torch.max(_gen_hr, axis=1)[0]
+        gen_list.append(_gen_hr.detach().cpu().numpy())
+
+Y = np.vstack(gen_list)
+fname = "%s/recon.bp"%(prefix)
+with ad2.open(fname, 'w') as fw:
+    shape = Y.shape
+    start = [0,]*len(shape)
+    count = shape
+    fw.write('gpiData', Y.copy(), shape, start, count)
+logging.info('Recon saved: %s'%fname)
+logging.info('Done.')
