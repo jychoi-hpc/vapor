@@ -37,7 +37,6 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
 parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training (default: %(default)s)")
-parser.add_argument("--dataset_name", type=str, default="nstx", help="name of the dataset (default: %(default)s)")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient (default: %(default)s)")
@@ -60,9 +59,14 @@ group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
 parser.set_defaults(model='N1024')
+
+group2 = parser.add_mutually_exclusive_group()
+group2.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
+group2.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='dataset', const='nstx')
+parser.set_defaults(dataset='nstx')
 opt = parser.parse_args()
 
-prefix='srgan-%s-%s-ch%d'%(opt.dataset_name, opt.model, opt.nchannel)
+prefix='srgan-%s-%s-ch%d'%(opt.dataset, opt.model, opt.nchannel)
 if opt.suffix is not None:
     prefix='%s-%s'%(prefix, opt.suffix)
 Path(prefix).mkdir(parents=True, exist_ok=True)
@@ -125,27 +129,41 @@ optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
-mean = 0.121008*2
-std = 0.217191
-
 # %%
-offset = 159065
-length = opt.nframes
-with ad2.open('nstx_data_ornl_demo_v2.bp','r') as f:
-    start=(offset,0,0) 
-    count=(length,64,80)
-    gpiData = f.read('gpiData', start=start, count=count)
-logging.debug (gpiData.shape)
+if opt.dataset == 'nstx':
+    offset = 159065
+    length = opt.nframes
+    with ad2.open('nstx_data_ornl_demo_v2.bp','r') as f:
+        start=(offset,0,0) 
+        count=(length,64,80)
+        gpiData = f.read('gpiData', start=start, count=count)
+    logging.debug (gpiData.shape)
 
-X = gpiData.astype(np.float32)
-xmin = np.min(X, axis=(1,2))
-xmax = np.max(X, axis=(1,2))
-X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+    X = gpiData.astype(np.float32)
+    xmin = np.min(X, axis=(1,2))
+    xmax = np.max(X, axis=(1,2))
+    X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
-if opt.gaussian:
-    from scipy.ndimage import gaussian_filter
-    for i in range(len(X)):
-        X[i,:] = gaussian_filter(X[i,:], sigma=5)
+    if opt.gaussian:
+        from scipy.ndimage import gaussian_filter
+        for i in range(len(X)):
+            X[i,:] = gaussian_filter(X[i,:], sigma=5)
+
+if opt.dataset == 'xgc':
+    ## XGC
+    import xgc4py
+    from vapor import read_f0_nodes
+    xgcexp = xgc4py.XGC('d3d_coarse_v2', step=420, device=device)
+    node_list = list()
+    for i in (71,72,73,74,75,76,77):
+        _nodes = xgcexp.mesh.surf_nodes(i)
+        logging.info (f'Surf idx, len: {i} {len(_nodes)}')
+        node_list.extend(_nodes)
+    nextnode_arr = xgcexp.nextnode_arr
+    out = read_f0_nodes(420, node_list, expdir='d3d_coarse_v2', iphi=None, nextnode_arr=nextnode_arr)
+    X = out[1].astype(np.float32)
+    logging.debug ('data size: %s'%list(X.shape))
+    X = X[:opt.nframes,]
 
 X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(X[:,np.newaxis,:,:])
 if opt.nchannel == 3:
@@ -178,11 +196,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # print (imgs_lr.shape, imgs_lr.min(), imgs_lr.max(), imgs_lr.mean())
 
         # Adversarial ground truths
-        output_shape = discriminator.output_shape
-        # (2021/03) Hard coding for now
-        # output_shape = (1,8,10)
-        valid = Variable(Tensor(np.ones((imgs_lr.size(0), *output_shape))), requires_grad=False)
-        fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *output_shape))), requires_grad=False)
+        # output_shape = discriminator.output_shape
+        # valid = Variable(Tensor(np.ones((imgs_lr.size(0), *output_shape))), requires_grad=False)
+        # fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *output_shape))), requires_grad=False)
 
         # ------------------
         #  Train Generators
@@ -199,7 +215,14 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # valid.shape: torch.Size([16, 1, 16, 16])
         # fake.shape: torch.Size([16, 1, 16, 16])
         # discriminator(gen_hr).shape: torch.Size([16, 1, 16, 16])
-        loss_GAN = criterion_GAN(discriminator(gen_hr), valid)
+        out = discriminator(gen_hr)
+
+        nb, nc, nh, nw = out.shape
+        output_shape = (nh, nw)
+        valid = Variable(Tensor(np.ones((imgs_lr.size(0), *output_shape))), requires_grad=False)
+        fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *output_shape))), requires_grad=False)
+
+        loss_GAN = criterion_GAN(out, valid)
 
         # Content loss
         gen_features = feature_extractor(gen_hr)
