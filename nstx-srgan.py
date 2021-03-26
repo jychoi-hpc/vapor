@@ -147,7 +147,7 @@ if opt.dataset == 'nstx':
     if opt.gaussian:
         from scipy.ndimage import gaussian_filter
         for i in range(len(X)):
-            X[i,:] = gaussian_filter(X[i,:], sigma=5)
+            X[i,:] = gaussian_filter(X[i,:], sigma=2)
 
 if opt.dataset == 'xgc':
     ## XGC
