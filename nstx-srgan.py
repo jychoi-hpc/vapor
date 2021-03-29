@@ -140,14 +140,14 @@ if opt.dataset == 'nstx':
     logging.debug (gpiData.shape)
 
     X = gpiData.astype(np.float32)
-    xmin = np.min(X, axis=(1,2))
-    xmax = np.max(X, axis=(1,2))
-    X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
-
     if opt.gaussian:
         from scipy.ndimage import gaussian_filter
         for i in range(len(X)):
             X[i,:] = gaussian_filter(X[i,:], sigma=2)
+
+    xmin = np.min(X, axis=(1,2))
+    xmax = np.max(X, axis=(1,2))
+    X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
 if opt.dataset == 'xgc':
     ## XGC

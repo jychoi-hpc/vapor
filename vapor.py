@@ -532,7 +532,7 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
-def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomread=0.0, nchunk=16):
+def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomread=0.0, nchunk=16, gaussian=False):
     """
     Read NSTX data
     """
@@ -545,6 +545,10 @@ def read_nstx(expdir=None, offset=159065, nframes=16384, average=False, randomre
     
     Z0 = gpiData.astype('float32')
     zlb = np.array(range(start, start+count), dtype=np.int32)
+    if gaussian:
+        from scipy.ndimage import gaussian_filter
+        for i in range(len(Z0)):
+            Z0[i,:] = gaussian_filter(Z0[i,:], sigma=2)
 
     #zlb = np.concatenate(li)
     zmu = np.mean(Z0, axis=(1,2))
@@ -1028,7 +1032,7 @@ class Decoder(nn.Module):
         x = self._conv_trans_2(x)
         x = F.relu(x)
         x = self._conv_trans_3(x)
-        x = torch.sigmoid(x)
+        # x = torch.sigmoid(x)
         # x = self._block(x)
 
         return x
@@ -1744,11 +1748,13 @@ def main():
     group1.add_argument('--learndiff', help='learndiff', action='store_true')
     group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
     group1.add_argument('--fieldline', help='fieldline', action='store_true')
+    group1.add_argument('--saverecon', help='save recon', action='store_true')
 
     group2 = parser.add_argument_group('NSTX', 'NSTX processing options')
     ## 159065, 172585, 186106, 199626, 213146, 226667, 240187, 253708, 267228, 280749
     group2.add_argument('--offset', help='offset', type=int, default=159065)
     group2.add_argument('--nframes', help='nframes', type=int, default=16_384)
+    group2.add_argument('--gaussian', help='apply gaussian filter', action='store_true')
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--vae', help='vqvae model', action='store_const', dest='model', const='vae')
@@ -1926,7 +1932,7 @@ def main():
             zmax = np.r_[(lst[5])]
 
     if args.dataset == 'nstx':
-        Z0, Zif, zmu, zsig, zmin, zmax, zlb = read_nstx(args.datadir, args.offset, args.nframes)
+        Z0, Zif, zmu, zsig, zmin, zmax, zlb = read_nstx(args.datadir, args.offset, args.nframes, gaussian=args.gaussian)
         Xif = Zif
 
     log ('Zif bytes,shape:', Zif.size * Zif.itemsize, Zif.shape, zmu.shape, zsig.shape)
@@ -2474,6 +2480,16 @@ def main():
             dmodel = model2
         X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
         log (Xif.shape, Xbar.shape)
+
+        if args.saverecon:
+            fname = "%s/recon.bp"%(prefix)
+            with ad2.open(fname, 'w') as fw:
+                shape = Xbar.shape
+                start = [0,]*len(shape)
+                count = shape
+                fw.write('recon', Xbar.copy(), shape, start, count)
+            logging.info('Recon saved: %s'%fname)
+            logging.info('Done.')
 
         rmse_list = list()
         abs_list = list()
