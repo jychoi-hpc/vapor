@@ -674,10 +674,10 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         ## Normalize
         xmin = np.min(Xbar, axis=(1,2))
         xmax = np.max(Xbar, axis=(1,2))
-        Xbar = (Xbar-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+        _Xbar = (Xbar-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
 
         ## Un-normalize
-        X0 = Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
+        X0 = _Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
     model.train(mode)
     
     if not return_encode:
@@ -1028,11 +1028,11 @@ class Decoder(nn.Module):
         x = self._residual_stack(x)
         
         x = self._conv_trans_1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         x = self._conv_trans_2(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         x = self._conv_trans_3(x)
-        # x = torch.sigmoid(x)
+        x = torch.sigmoid(x)
         # x = self._block(x)
 
         return x
