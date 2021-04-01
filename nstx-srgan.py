@@ -59,11 +59,12 @@ group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
 parser.set_defaults(model='N1024')
-
-group2 = parser.add_mutually_exclusive_group()
-group2.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
-group2.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='dataset', const='nstx')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
+group.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='dataset', const='nstx')
 parser.set_defaults(dataset='nstx')
+group = parser.add_argument_group('XGC', 'XGC processing options')
+group.add_argument('--datadir', help='data directory (default: %(default)s)', default='d3d_coarse_v2')
 opt = parser.parse_args()
 
 prefix='srgan-%s-%s-ch%d'%(opt.dataset, opt.model, opt.nchannel)
@@ -153,14 +154,14 @@ if opt.dataset == 'xgc':
     ## XGC
     import xgc4py
     from vapor import read_f0_nodes
-    xgcexp = xgc4py.XGC('d3d_coarse_v2', step=420, device=device)
+    xgcexp = xgc4py.XGC(opt.datadir, step=420, device=device)
     node_list = list()
     for i in (71,72,73,74,75,76,77):
         _nodes = xgcexp.mesh.surf_nodes(i)
         logging.info (f'Surf idx, len: {i} {len(_nodes)}')
         node_list.extend(_nodes)
     nextnode_arr = xgcexp.nextnode_arr
-    out = read_f0_nodes(420, node_list, expdir='d3d_coarse_v2', iphi=None, nextnode_arr=nextnode_arr)
+    out = read_f0_nodes(420, node_list, expdir=opt.datadir, iphi=None, nextnode_arr=nextnode_arr)
     X = out[1].astype(np.float32)
     logging.debug ('data size: %s'%list(X.shape))
     X = X[:opt.nframes,]
