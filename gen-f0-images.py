@@ -19,6 +19,9 @@ import queue
 import argparse
 import random
 
+import queue
+from threading import Thread
+
 def get_size(fig, dpi=100):
     with NamedTemporaryFile(suffix='.png') as f:
         fig.savefig(f.name, bbox_inches='tight', dpi=dpi)
@@ -254,6 +257,15 @@ def dowork_full(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdi
     
     return fname
 
+def dispatch(dq):
+    seq = 0
+    while True:
+        future = dq.get()
+        _ = future.result()
+        dq.task_done()
+        print ("Done: %d"%seq)
+        seq += 1
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('exp', help='exp')
@@ -372,6 +384,7 @@ if __name__ == "__main__":
     print ('outdir:', outdir)
     os.makedirs(outdir, exist_ok=True)
 
+
     if args.mode == 'grey':    
         for iphi in range(1): #,f0_f.shape[0]):
             for inode in range(f0_f.shape[1]):
@@ -398,7 +411,10 @@ if __name__ == "__main__":
                 den_g = f0_f
             if args.mode == 'full':
                 dowork = dowork_full
-            future_list = list()
+            
+            dq = queue.Queue()
+            dispatcher = Thread(target=dispatch, args=(dq,), daemon=True)
+            dispatcher.start()
             seq = 0
             for iphi in range(1): #,f0_f.shape[0]):
                 #fsum = np.mean(f0_f[iphi,:], axis=(1,2))
@@ -422,7 +438,7 @@ if __name__ == "__main__":
                         title = 'node: %d (surfid: %d)'%(inode,i)
                         if not args.nofuture: 
                             future = executor.submit(dowork, Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
-                            future_list.append(future)
+                            dq.put(future)
                         else:
                             dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                         seq += 1
@@ -445,12 +461,16 @@ if __name__ == "__main__":
                     title = 'node: %d (surfid: %d)'%(inode,-1)
                     if not args.nofuture: 
                         future = executor.submit(dowork, Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
-                        future_list.append(future)
+                        dq.put(future)
                     else:
                         dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                     seq += 1
-
-            if not args.nofuture:
-                for future in tqdm(future_list):
-                    _ = future.result()
+            
+            ## Clean up
+            dq.join()
+            print('All work completed')
+            
+            # if not args.nofuture:
+            #     for future in tqdm(future_list):
+            #         _ = future.result()
                 
