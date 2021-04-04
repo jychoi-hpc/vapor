@@ -104,7 +104,47 @@ def xdowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
     
     return fname
 
-def dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq, save=True):
+def dowork_only2(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq, save=True):
+    fig = plt.figure(figsize=[12,6], constrained_layout=False)
+    
+    ax = plt.subplot(1,2,1)
+    plt.tricontourf(trimesh, fsum)
+    clb = plt.colorbar()
+    clb.ax.set_title('log10(max)', fontsize=10)
+    plt.axis('scaled')
+    plt.axis('off')
+    #plt.triplot(trimesh, alpha=0.3, c='0.3')
+    plt.scatter(r[inode], z[inode], c='r', marker='x', s=80)
+    
+    nx, ny = Z0.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+
+    ax = plt.subplot(1,2,2)
+    im = ax.imshow(Z0, origin='lower')
+    plt.colorbar(im, orientation='horizontal', pad=0.01)
+    #colorbar(im)
+    plt.axvline(x=nx/2, c='w', alpha=0.3, ls='dashed')
+    plt.contour(X, Y, Z0, levels=5, colors='w', alpha=0.3, origin='lower')
+    plt.title(title)
+    plt.axis('scaled')
+    plt.axis('off')
+    #plt.tight_layout(h_pad=1)
+
+    fname = '%s/%06d.jpg'%(outdir,seq)
+    #if inode%100 == 0: print (fname)
+    #set_size(fig, (8, 6))
+    #plt.savefig(fname, bbox_inches='tight')
+    ## (2021/02) not working
+    # plt.savefig(fname, bbox_inches='tight', pad_inches=1.0) 
+    if save:
+        plt.savefig(fname)
+        plt.close()
+    
+    return fname
+
+def dowork_full(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq, save=True):
     fig = plt.figure(figsize=[12,8], constrained_layout=False)
     fig.suptitle(title, fontsize=14, y=0.97)
     gs = fig.add_gridspec(2, 4, width_ratios=[1,1,1,1])
@@ -217,10 +257,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('exp', help='exp')
     parser.add_argument('--prefix', help='prefix', default='xgc_images_fluxsurf')
-    parser.add_argument('--grey', help='grey', action='store_true')
     parser.add_argument('--onlyn', type=int, help='onlyn', default=10000000)
     parser.add_argument('--nofuture', help='nofuture', action='store_true')
     parser.add_argument('--nworkers', type=int, help='nworkers', default=32)
+    parser.add_argument('--istep', type=int, help='istep', default=420)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--grey', help='grey', action='store_const', dest='mode', const='grey')
+    group.add_argument('--only2', help='only2', action='store_const', dest='mode', const='only2')
+    group.add_argument('--full', help='full', action='store_const', dest='mode', const='full')
+    parser.set_defaults(mode='full')
+
     args = parser.parse_args()
 
     exp = args.exp #'d3d_coarse_v2_4x'
@@ -262,31 +308,42 @@ if __name__ == "__main__":
 #         X0 = f.read('i_f_recon')
 #     print (X0.shape)
 
-    with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, 420), 'r') as f:
+    with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, args.istep), 'r') as f:
         i_f = f.read('i_f')
     f0_f = np.moveaxis(i_f, 2, 1).copy()
 
-    with ad2.open('%s-recon.bp'%exp, 'r') as f:
-        f0_g = f.read('i_f_recon')
-    print (f0_f.shape, f0_g.shape)
+    fname = '%s-recon.bp'%exp
+    if os.path.exists(fname):
+        with ad2.open(fname, 'r') as f:
+            f0_g = f.read('i_f_recon')
+        print (f0_f.shape, f0_g.shape)
+    else:
+        print (f"[WARN] cannot open: {fname}")
 
-    with ad2.open('%s-physics1.bp'%exp, 'r') as f:
-        den_f = f.read('den_f')
-        den_g = f.read('den_g')
+    fname = '%s-physics1.bp'%exp
+    if os.path.exists(fname):
+        with ad2.open(fname, 'r') as f:
+            den_f = f.read('den_f')
+            den_g = f.read('den_g')
+    else:
+        print (f"[WARN] cannot open: {fname}")
 
-    with ad2.open('%s-physics3.bp'%exp, 'r') as f:
-        fn_n0_all_f = f.read('fn_n0_all_f')
-        fn_n0_all_g = f.read('fn_n0_all_g')
-        fn_turb_all_f = f.read('fn_turb_all_f')
-        fn_turb_all_g = f.read('fn_turb_all_g')
-        
-    print (den_f.shape, fn_n0_all_f.shape, fn_turb_all_f.shape)
+    fname = '%s-physics3.bp'%exp
+    if os.path.exists(fname):
+        with ad2.open(fname, 'r') as f:
+            fn_n0_all_f = f.read('fn_n0_all_f')
+            fn_n0_all_g = f.read('fn_n0_all_g')
+            fn_turb_all_f = f.read('fn_turb_all_f')
+            fn_turb_all_g = f.read('fn_turb_all_g')
+        print (den_f.shape, fn_n0_all_f.shape, fn_turb_all_f.shape)
+    else:
+        print (f"[WARN] cannot open: {fname}")
 
     outdir = '%s-%s'%(args.prefix,exp)
     print ('outdir:', outdir)
     os.makedirs(outdir, exist_ok=True)
 
-    if args.grey:    
+    if args.mode == 'grey':    
         for iphi in range(1): #,f0_f.shape[0]):
             for inode in range(f0_f.shape[1]):
                 #print (iphi, inode)
@@ -303,6 +360,15 @@ if __name__ == "__main__":
                 if inode%1000 == 0: print (fname)
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
+            if args.mode == 'only2':
+                dowork = dowork_only2
+                f0_g = f0_f
+                fn_n0_all_f = f0_f
+                fn_n0_all_g = f0_f
+                den_f = f0_f
+                den_g = f0_f
+            if args.mode == 'full':
+                dowork = dowork_full
             future_list = list()
             seq = 0
             for iphi in range(1): #,f0_f.shape[0]):
@@ -320,7 +386,6 @@ if __name__ == "__main__":
                         #T1 = fn_turb_all_g[iphi,inode,:,:]
                         T0 = den_f[iphi,inode,:,:]
                         T1 = den_g[iphi,inode,:,:]
-
 
                         title = 'node: %d (surfid: %d)'%(inode,i)
                         if not args.nofuture: 
