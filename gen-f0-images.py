@@ -21,6 +21,7 @@ import random
 
 import queue
 from threading import Thread
+import time
 
 def get_size(fig, dpi=100):
     with NamedTemporaryFile(suffix='.png') as f:
@@ -266,6 +267,10 @@ def dispatch(dq):
         print ("Done: %d"%seq)
         seq += 1
 
+def hello():
+    time.sleep(3)
+    print ("Hello: %d"%os.getpid())
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('exp', help='exp')
@@ -285,6 +290,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
+        for i in range(args.nworkers):
+            executor.submit(hello)
+
         exp = args.exp #'d3d_coarse_v2_4x'
         print (exp)
         with ad2.open('%s/xgc.mesh.bp'%exp, 'r') as f:
