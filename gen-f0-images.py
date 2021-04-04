@@ -17,6 +17,7 @@ import concurrent.futures
 from tqdm import tqdm
 import queue
 import argparse
+import random
 
 def get_size(fig, dpi=100):
     with NamedTemporaryFile(suffix='.png') as f:
@@ -262,6 +263,7 @@ if __name__ == "__main__":
     parser.add_argument('--nworkers', type=int, help='nworkers', default=32)
     parser.add_argument('--istep', type=int, help='istep', default=420)
     parser.add_argument('--iphi', help='iphi', action='store_true')
+    parser.add_argument('--rand', type=float, help='rand', default=1.0)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--grey', help='grey', action='store_const', dest='mode', const='grey')
     group.add_argument('--only2', help='only2', action='store_const', dest='mode', const='only2')
@@ -403,6 +405,8 @@ if __name__ == "__main__":
                 fsum = np.log10(np.max(f0_f[iphi,:], axis=(1,2)))
                 for i in tqdm(range(min(len(surf_idx), args.onlyn))):
                     for j in range(surf_len[i]):
+                        if random.random() >= args.rand:
+                            continue
                         inode = surf_idx[i,j]-1
                         
                         Z0 = f0_f[iphi,inode,:,:]
@@ -424,6 +428,8 @@ if __name__ == "__main__":
                 
                 ub = min(len(not_in_surf), args.onlyn)
                 for inode in tqdm(not_in_surf[:ub]):
+                    if random.random() >= args.rand:
+                        continue
                     Z0 = f0_f[iphi,inode,:,:]
                     Z1 = f0_g[iphi,inode,:,:]
                     N0 = fn_n0_all_f[iphi,inode,:,:]
@@ -441,7 +447,6 @@ if __name__ == "__main__":
                     else:
                         dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                     seq += 1
-
 
             if not args.nofuture:
                 for future in tqdm(future_list):
