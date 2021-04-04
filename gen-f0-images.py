@@ -264,7 +264,7 @@ def dispatch(dq):
         future = dq.get()
         _ = future.result()
         dq.task_done()
-        print ("Done: %d"%seq)
+        print ("Done: %d/%d"%(seq, dq.qsize()))
         seq += 1
 
 def hello():
