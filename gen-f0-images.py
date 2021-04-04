@@ -261,6 +261,7 @@ if __name__ == "__main__":
     parser.add_argument('--nofuture', help='nofuture', action='store_true')
     parser.add_argument('--nworkers', type=int, help='nworkers', default=32)
     parser.add_argument('--istep', type=int, help='istep', default=420)
+    parser.add_argument('--iphi', help='iphi', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--grey', help='grey', action='store_const', dest='mode', const='grey')
     group.add_argument('--only2', help='only2', action='store_const', dest='mode', const='only2')
@@ -308,8 +309,34 @@ if __name__ == "__main__":
 #         X0 = f.read('i_f_recon')
 #     print (X0.shape)
 
+    def adios2_get_shape(f, varname):
+        nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
+        shape = f.available_variables()[varname]['Shape']
+        lshape = None
+        if shape == '':
+            ## Accessing Adios1 file
+            ## Read data and figure out
+            v = f.read(varname)
+            lshape = v.shape
+        else:
+            lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
+        return (nstep, lshape)
+
     with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, args.istep), 'r') as f:
-        i_f = f.read('i_f')
+        nstep, nsize = adios2_get_shape(f, 'i_f')
+        nphi = nsize[0]
+        nmu = nsize[1]
+        nnodes = nsize[2]
+        nvp = nsize[3]
+        start = (0,0,0,0)
+        count = (nphi,nmu,nnodes,nvp)
+
+        if args.iphi:
+            count = (1,nmu,nnodes,nvp)
+            i_f = np.zeros(nsize)
+            i_f[0,:] = f.read('i_f', start=start, count=count)
+        else:
+            i_f = f.read('i_f', start=start, count=count)
     f0_f = np.moveaxis(i_f, 2, 1).copy()
 
     fname = '%s-recon.bp'%exp
