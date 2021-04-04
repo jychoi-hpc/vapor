@@ -289,7 +289,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers, initializer=hello) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
+        for i in range(args.nworkers):
+            executor.submit(hello)
+
         exp = args.exp #'d3d_coarse_v2_4x'
         print (exp)
         with ad2.open('%s/xgc.mesh.bp'%exp, 'r') as f:
