@@ -403,8 +403,9 @@ if __name__ == "__main__":
             for iphi in range(1): #,f0_f.shape[0]):
                 #fsum = np.mean(f0_f[iphi,:], axis=(1,2))
                 fsum = np.log10(np.max(f0_f[iphi,:], axis=(1,2)))
-                for i in tqdm(range(min(len(surf_idx), args.onlyn))):
-                    for j in range(surf_len[i]):
+                for i in range(min(len(surf_idx), args.onlyn)):
+                    print ("Surfid: %d/%d"%(i, len(surf_idx)))
+                    for j in tqdm(range(surf_len[i])):
                         if random.random() >= args.rand:
                             continue
                         inode = surf_idx[i,j]-1
@@ -426,6 +427,7 @@ if __name__ == "__main__":
                             dowork(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdir, seq)
                         seq += 1
                 
+                print ("Surfid: %d/%d"%(-1, len(surf_idx)))
                 ub = min(len(not_in_surf), args.onlyn)
                 for inode in tqdm(not_in_surf[:ub]):
                     if random.random() >= args.rand:
