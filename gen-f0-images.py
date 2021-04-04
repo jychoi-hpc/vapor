@@ -284,124 +284,124 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    exp = args.exp #'d3d_coarse_v2_4x'
-    print (exp)
-    with ad2.open('%s/xgc.mesh.bp'%exp, 'r') as f:
-        nnodes = int(f.read('n_n', ))
-        #ncells = int(f.read('n_t', ))
-        rz = f.read('rz')
-        conn = f.read('nd_connect_list')
-        #psi = f.read('psi')
-        nextnode = f.read('nextnode')
-        #epsilon = f.read('epsilon')
-        #node_vol = f.read('node_vol')
-        #node_vol_nearest = f.read('node_vol_nearest')
-        #psi_surf = f.read('psi_surf')
-        surf_idx = f.read('surf_idx')
-        surf_len = f.read('surf_len')
+    with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
+        exp = args.exp #'d3d_coarse_v2_4x'
+        print (exp)
+        with ad2.open('%s/xgc.mesh.bp'%exp, 'r') as f:
+            nnodes = int(f.read('n_n', ))
+            #ncells = int(f.read('n_t', ))
+            rz = f.read('rz')
+            conn = f.read('nd_connect_list')
+            #psi = f.read('psi')
+            nextnode = f.read('nextnode')
+            #epsilon = f.read('epsilon')
+            #node_vol = f.read('node_vol')
+            #node_vol_nearest = f.read('node_vol_nearest')
+            #psi_surf = f.read('psi_surf')
+            surf_idx = f.read('surf_idx')
+            surf_len = f.read('surf_len')
 
-    r = rz[:,0]
-    z = rz[:,1]
-    trimesh = tri.Triangulation(r, z, conn)
-    print (nnodes)
+        r = rz[:,0]
+        z = rz[:,1]
+        trimesh = tri.Triangulation(r, z, conn)
+        print (nnodes)
 
-    bl = np.zeros_like(nextnode, dtype=bool)
-    for i in range(len(surf_len)):
-        n = surf_len[i]
-        k = surf_idx[i,:n]-1
-        for j in k:
-            bl[j] = True
+        bl = np.zeros_like(nextnode, dtype=bool)
+        for i in range(len(surf_len)):
+            n = surf_len[i]
+            k = surf_idx[i,:n]-1
+            for j in k:
+                bl[j] = True
 
-    not_in_surf=np.arange(len(nextnode))[~bl]
+        not_in_surf=np.arange(len(nextnode))[~bl]
 
-#     with ad2.open('%s/restart_dir/xgc.f0.00420.bp'%exp,'r') as f:
-#         i_f = f.read('i_f')
-#     i_f = np.moveaxis(i_f,1,2)
-#     print (i_f.shape)
+    #     with ad2.open('%s/restart_dir/xgc.f0.00420.bp'%exp,'r') as f:
+    #         i_f = f.read('i_f')
+    #     i_f = np.moveaxis(i_f,1,2)
+    #     print (i_f.shape)
 
-#     with ad2.open('%s-recon.bp'%exp,'r') as f:
-#         X0 = f.read('i_f_recon')
-#     print (X0.shape)
+    #     with ad2.open('%s-recon.bp'%exp,'r') as f:
+    #         X0 = f.read('i_f_recon')
+    #     print (X0.shape)
 
-    def adios2_get_shape(f, varname):
-        nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
-        shape = f.available_variables()[varname]['Shape']
-        lshape = None
-        if shape == '':
-            ## Accessing Adios1 file
-            ## Read data and figure out
-            v = f.read(varname)
-            lshape = v.shape
+        def adios2_get_shape(f, varname):
+            nstep = int(f.available_variables()[varname]['AvailableStepsCount'])
+            shape = f.available_variables()[varname]['Shape']
+            lshape = None
+            if shape == '':
+                ## Accessing Adios1 file
+                ## Read data and figure out
+                v = f.read(varname)
+                lshape = v.shape
+            else:
+                lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
+            return (nstep, lshape)
+
+        with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, args.istep), 'r') as f:
+            nstep, nsize = adios2_get_shape(f, 'i_f')
+            nphi = nsize[0]
+            nmu = nsize[1]
+            nnodes = nsize[2]
+            nvp = nsize[3]
+            start = (0,0,0,0)
+            count = (nphi,nmu,nnodes,nvp)
+
+            if args.iphi:
+                count = (1,nmu,nnodes,nvp)
+                i_f = np.zeros(nsize)
+                i_f[0,:] = f.read('i_f', start=start, count=count)
+            else:
+                i_f = f.read('i_f', start=start, count=count)
+        f0_f = np.moveaxis(i_f, 2, 1).copy()
+
+        fname = '%s-recon.bp'%exp
+        if os.path.exists(fname):
+            with ad2.open(fname, 'r') as f:
+                f0_g = f.read('i_f_recon')
+            print (f0_f.shape, f0_g.shape)
         else:
-            lshape = tuple([ int(x.strip(',')) for x in shape.strip().split() ])
-        return (nstep, lshape)
+            print (f"[WARN] cannot open: {fname}")
 
-    with ad2.open('%s/restart_dir/xgc.f0.%05d.bp'%(exp, args.istep), 'r') as f:
-        nstep, nsize = adios2_get_shape(f, 'i_f')
-        nphi = nsize[0]
-        nmu = nsize[1]
-        nnodes = nsize[2]
-        nvp = nsize[3]
-        start = (0,0,0,0)
-        count = (nphi,nmu,nnodes,nvp)
-
-        if args.iphi:
-            count = (1,nmu,nnodes,nvp)
-            i_f = np.zeros(nsize)
-            i_f[0,:] = f.read('i_f', start=start, count=count)
+        fname = '%s-physics1.bp'%exp
+        if os.path.exists(fname):
+            with ad2.open(fname, 'r') as f:
+                den_f = f.read('den_f')
+                den_g = f.read('den_g')
         else:
-            i_f = f.read('i_f', start=start, count=count)
-    f0_f = np.moveaxis(i_f, 2, 1).copy()
+            print (f"[WARN] cannot open: {fname}")
 
-    fname = '%s-recon.bp'%exp
-    if os.path.exists(fname):
-        with ad2.open(fname, 'r') as f:
-            f0_g = f.read('i_f_recon')
-        print (f0_f.shape, f0_g.shape)
-    else:
-        print (f"[WARN] cannot open: {fname}")
+        fname = '%s-physics3.bp'%exp
+        if os.path.exists(fname):
+            with ad2.open(fname, 'r') as f:
+                fn_n0_all_f = f.read('fn_n0_all_f')
+                fn_n0_all_g = f.read('fn_n0_all_g')
+                fn_turb_all_f = f.read('fn_turb_all_f')
+                fn_turb_all_g = f.read('fn_turb_all_g')
+            print (den_f.shape, fn_n0_all_f.shape, fn_turb_all_f.shape)
+        else:
+            print (f"[WARN] cannot open: {fname}")
 
-    fname = '%s-physics1.bp'%exp
-    if os.path.exists(fname):
-        with ad2.open(fname, 'r') as f:
-            den_f = f.read('den_f')
-            den_g = f.read('den_g')
-    else:
-        print (f"[WARN] cannot open: {fname}")
-
-    fname = '%s-physics3.bp'%exp
-    if os.path.exists(fname):
-        with ad2.open(fname, 'r') as f:
-            fn_n0_all_f = f.read('fn_n0_all_f')
-            fn_n0_all_g = f.read('fn_n0_all_g')
-            fn_turb_all_f = f.read('fn_turb_all_f')
-            fn_turb_all_g = f.read('fn_turb_all_g')
-        print (den_f.shape, fn_n0_all_f.shape, fn_turb_all_f.shape)
-    else:
-        print (f"[WARN] cannot open: {fname}")
-
-    outdir = '%s-%s'%(args.prefix,exp)
-    print ('outdir:', outdir)
-    os.makedirs(outdir, exist_ok=True)
+        outdir = '%s-%s'%(args.prefix,exp)
+        print ('outdir:', outdir)
+        os.makedirs(outdir, exist_ok=True)
 
 
-    if args.mode == 'grey':    
-        for iphi in range(1): #,f0_f.shape[0]):
-            for inode in range(f0_f.shape[1]):
-                #print (iphi, inode)
-                X  = f0_f[iphi,inode,:,:]
-                X = (X-X.min())/(X.max()-X.min())*255
-                X = X.astype(np.float32).copy()
+        if args.mode == 'grey':    
+            for iphi in range(1): #,f0_f.shape[0]):
+                for inode in range(f0_f.shape[1]):
+                    #print (iphi, inode)
+                    X  = f0_f[iphi,inode,:,:]
+                    X = (X-X.min())/(X.max()-X.min())*255
+                    X = X.astype(np.float32).copy()
 
-                im = Image.fromarray(np.uint8(X))
-                im = im.resize((256, 256))
-                #fname = '%s/%d-%d-%05d.jpg'%(outdir,420,iphi,inode)
-                fname = '%s/%06d.jpg'%(outdir,inode)
-                im.save(fname)
+                    im = Image.fromarray(np.uint8(X))
+                    im = im.resize((256, 256))
+                    #fname = '%s/%d-%d-%05d.jpg'%(outdir,420,iphi,inode)
+                    fname = '%s/%06d.jpg'%(outdir,inode)
+                    im.save(fname)
 
-                if inode%1000 == 0: print (fname)
-    else:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=args.nworkers) as executor:
+                    if inode%1000 == 0: print (fname)
+        else:
             if args.mode == 'only2':
                 dowork = dowork_only2
                 f0_g = f0_f
