@@ -612,6 +612,14 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 lz.append((valid_reconstructions).cpu().data.numpy())
             elif modelname in ('ae','ae2d'):
                 valid_encode = model.encode(valid_originals)
+                if args.conditional:
+                    x = valid_originals
+                    _x = torch.cat((x,x,x), axis=1)
+                    feature = model.feature_extractor(_x)
+                    flat = torch.mean(feature, dim=(2,3))
+                    y = model.feature_encoder(flat)
+                    valid_encode = torch.cat((valid_encode,y), axis=1)
+
                 valid_reconstructions = model.decode(valid_encode)
                 
                 lz.append((valid_reconstructions).cpu().data.numpy())
@@ -1355,8 +1363,23 @@ class VAE(nn.Module):
 Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
 """
 class AE(nn.Module):
-    def __init__(self, input_dim, embedding_dim):
+    def __init__(self, input_dim, embedding_dim, conditional=False):
         super().__init__()
+
+        self.conditional = conditional
+
+        _embedding_dim = embedding_dim
+        if self.conditional:
+            # modelfile = 'xgc-vgg19-ch1-N1000.torch'
+            # self.feature_extractor = XGCFeatureExtractor(modelfile)
+            self.feature_extractor = FeatureExtractor()
+            self.feature_extractor = self.feature_extractor.to(device)
+            self.feature_extractor.eval()
+            self.feature_encoder = nn.Sequential(
+                nn.Linear(256, embedding_dim),
+                nn.LeakyReLU(True),
+                )
+            _embedding_dim = embedding_dim*2
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
         self._encoder = nn.Sequential(
@@ -1367,7 +1390,7 @@ class AE(nn.Module):
             )
 
         self._decoder = nn.Sequential(
-            nn.Linear(embedding_dim, embedding_dim),
+            nn.Linear(_embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
             nn.Linear(embedding_dim, input_dim),
             nn.LeakyReLU(True),
@@ -1387,8 +1410,24 @@ class AE(nn.Module):
         return x
 
     def forward(self, x):
+        if self.conditional:
+            #import pdb; pdb.set_trace()
+            _x = torch.cat((x,x,x), axis=1)
+            feature = self.feature_extractor(_x)
+            flat = torch.mean(feature, dim=(2,3))
+            y = self.feature_encoder(flat)
+            # cond = F.avg_pool2d(feature, kernel_size=3, stride=2, padding=1)
+            # cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+            # p1d = (0, 1)
+            # cond = F.pad(cond, p1d, "constant", 0)
+            # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+            # quantized = torch.cat((quantized, cond), dim=1)
+
         x = self.encode(x)
+        if self.conditional:
+            x = torch.cat((x,y), axis=1)
         x = self.decode(x)
+
         # nbatch, nc, nx, ny = x.shape
         # x = x.view(nbatch, -1)
 
@@ -2211,7 +2250,7 @@ def main():
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae':
-        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, conditional=args.conditional).to(device)
 
     if args.model == 'ae-vqvae':
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
