@@ -638,11 +638,15 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
                 if conditional:
-                    feature = model.feature_extractor(valid_originals)
-                    cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
-                    p1d = (0, 1)
-                    cond = F.pad(cond, p1d, "constant", 0)
-                    cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+                    x = valid_originals
+                    x = torch.cat((x,x,x), axis=1)
+                    feature = model.feature_extractor(x)
+                    cond = F.avg_pool2d(feature, kernel_size=3, stride=2, padding=1)
+                    # feature = model.feature_extractor(valid_originals)
+                    # cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+                    # p1d = (0, 1)
+                    # cond = F.pad(cond, p1d, "constant", 0)
+                    # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
                     valid_quantize = torch.cat((valid_quantize, cond), dim=1)
                 valid_reconstructions = model._decoder(valid_quantize)
                 encode_list.append(valid_quantize)
@@ -1084,7 +1088,7 @@ class Model(nn.Module):
                                            commitment_cost)
         _embedding_dim = embedding_dim
         if self.conditional:
-            _embedding_dim = embedding_dim + 4
+            _embedding_dim = embedding_dim + 256
         self._decoder = Decoder(_embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
@@ -1125,8 +1129,9 @@ class Model(nn.Module):
         self._shaconv = shaconv
 
         if self.conditional:
-            modelfile = 'xgc-vgg19-ch1-N1000.torch'
-            self.feature_extractor = XGCFeatureExtractor(modelfile)
+            # modelfile = 'xgc-vgg19-ch1-N1000.torch'
+            # self.feature_extractor = XGCFeatureExtractor(modelfile)
+            self.feature_extractor = FeatureExtractor()
             self.feature_extractor = self.feature_extractor.to(device)
             self.feature_extractor.eval()
 
@@ -1155,11 +1160,13 @@ class Model(nn.Module):
         loss, quantized, perplexity, _ = self._vq_vae(z)
         # print ('#3:', quantized.shape)
         if self.conditional:
-            feature = self.feature_extractor(x)
-            cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
-            p1d = (0, 1)
-            cond = F.pad(cond, p1d, "constant", 0)
-            cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+            _x = torch.cat((x,x,x), axis=1)
+            feature = self.feature_extractor(_x)
+            cond = F.avg_pool2d(feature, kernel_size=3, stride=2, padding=1)
+            # cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+            # p1d = (0, 1)
+            # cond = F.pad(cond, p1d, "constant", 0)
+            # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
             quantized = torch.cat((quantized, cond), dim=1)
 
         x_recon = self._decoder(quantized)
@@ -2459,11 +2466,15 @@ def main():
             vq_output_eval = model._pre_vq_conv(vq_encoded)
             _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
             if args.conditional:
-                feature = model.feature_extractor(valid_originals)
-                cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
-                p1d = (0, 1)
-                cond = F.pad(cond, p1d, "constant", 0)
-                cond = torch.reshape(cond, (nbatch, 4, 5, 5))
+                x = valid_originals
+                x = torch.cat((x,x,x), axis=1)
+                feature = model.feature_extractor(x)
+                cond = F.avg_pool2d(feature, kernel_size=3, stride=2, padding=1)
+                # feature = model.feature_extractor(valid_originals)
+                # cond = F.avg_pool1d(feature.view(nbatch,nchannel,1090), kernel_size=11)
+                # p1d = (0, 1)
+                # cond = F.pad(cond, p1d, "constant", 0)
+                # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
                 valid_quantize = torch.cat((valid_quantize, cond), dim=1)
             valid_reconstructions = model._decoder(valid_quantize)
             if model._grid is not None:
