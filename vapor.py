@@ -338,12 +338,12 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
         logging.info (f"Reading: {fname} {start} {count}")
         i_f = f.read('i_f', start=start, count=count).astype('float64')
 
-    if i_f.shape[3] == 31:
-        i_f = np.append(i_f, i_f[...,30:31], axis=3)
-        # e_f = np.append(e_f, e_f[...,30:31], axis=3)
-    if i_f.shape[3] == 39:
-        i_f = np.append(i_f, i_f[...,38:39], axis=3)
-        i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
+    # if i_f.shape[3] == 31:
+    #     i_f = np.append(i_f, i_f[...,30:31], axis=3)
+    #     # e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    # if i_f.shape[3] == 39:
+    #     i_f = np.append(i_f, i_f[...,38:39], axis=3)
+    #     i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
 
     i_f = np.moveaxis(i_f, 1, 2)
 
@@ -503,12 +503,12 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
         li = list(range(inode, inode+_nnodes))
         lb = np.array(li, dtype=np.int32)
 
-    if i_f.shape[3] == 31:
-        i_f = np.append(i_f, i_f[...,30:31], axis=3)
-        # e_f = np.append(e_f, e_f[...,30:31], axis=3)
-    if i_f.shape[3] == 39:
-        i_f = np.append(i_f, i_f[...,38:39], axis=3)
-        i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
+    # if i_f.shape[3] == 31:
+    #     i_f = np.append(i_f, i_f[...,30:31], axis=3)
+    #     # e_f = np.append(e_f, e_f[...,30:31], axis=3)
+    # if i_f.shape[3] == 39:
+    #     i_f = np.append(i_f, i_f[...,38:39], axis=3)
+    #     i_f = np.append(i_f, i_f[:,38:39,:,:], axis=1)
 
     Z0 = np.moveaxis(i_f, 1, 2)
 
@@ -936,6 +936,7 @@ class Encoder(nn.Module):
     def forward(self, inputs):
         # (2020/11) Testing with resize
         x = inputs
+        # print ('ENC #1:', x.shape)
         # if self._rescale is not None:
         #     x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
         #     x = self._conv_0(x)
@@ -943,21 +944,25 @@ class Encoder(nn.Module):
 
         x = self._conv_1(x)
         x = F.relu(x)
+        # print ('ENC #2:', x.shape)
         
         x = self._conv_2(x)
         x = F.relu(x)
+        # print ('ENC #3:', x.shape)
         
         x = self._conv_3(x)
         x = F.relu(x)
         # x = self._block(x)
+        # print ('ENC #4:', x.shape)
 
         x = self._conv_4(x)
         x = self._residual_stack(x)
+        # print ('ENC #5:', x.shape)
         return x
 
 # %%
 class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, num_channels):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, num_channels, padding=[1,1,1]):
         super(Decoder, self).__init__()
         
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
@@ -976,13 +981,13 @@ class Decoder(nn.Module):
         # kernel_size=2, stride=2, padding=0, output_padding=0
         self._conv_trans_1 = nn.ConvTranspose2d(in_channels=num_hiddens, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=3, stride=2, padding=1, output_padding=1)
+                                                kernel_size=3, stride=2, padding=1, output_padding=padding[0])
         self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_hiddens//2,
-                                                kernel_size=3, stride=2, padding=1, output_padding=1)
+                                                kernel_size=3, stride=2, padding=1, output_padding=padding[1])
         self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_channels,
-                                                kernel_size=3, stride=2, padding=1, output_padding=1)
+                                                kernel_size=3, stride=2, padding=1, output_padding=padding[2])
 
         # # (2021/03)
         # self._block = nn.Sequential(
@@ -1024,16 +1029,24 @@ class Decoder(nn.Module):
     #5: torch.Size([1, 1, 40, 40])
     def forward(self, inputs):
         x = inputs
+        # print ('DEC #1:', x.shape)
+
         x = self._conv_1(x)
         x = self._residual_stack(x)
+        # print ('DEC #2:', x.shape)
         
         x = self._conv_trans_1(x)
         x = F.relu(x)
+        # print ('DEC #3:', x.shape)
+        
         x = self._conv_trans_2(x)
         x = F.relu(x)
+        # print ('DEC #4:', x.shape)
+        
         x = self._conv_trans_3(x)
         # x = torch.sigmoid(x)
         # x = self._block(x)
+        # print ('DEC #5:', x.shape)
 
         return x
 
@@ -1041,7 +1054,7 @@ class Decoder(nn.Module):
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, 
-                 input_shape=None, shaconv=False, grid=None, conditional=False):
+                 input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1]):
         super(Model, self).__init__()
         
         self._grid = grid
@@ -1075,7 +1088,7 @@ class Model(nn.Module):
         self._decoder = Decoder(_embedding_dim,
                                 num_hiddens, 
                                 num_residual_layers, 
-                                num_residual_hiddens, self.width)
+                                num_residual_hiddens, self.width, padding=decoder_padding)
 
         """
         Learn diff
@@ -1942,9 +1955,9 @@ def main():
     if args.model == 'fno':
         with ad2.open('d3d_coarse_v2-recon.bp', 'r') as f:
             Xrec = f.read('i_f_recon').astype(np.float32)
-            if Xrec.shape[3] == 39:
-                Xrec = np.append(Xrec, Xrec[...,38:39], axis=3)
-                Xrec = np.append(Xrec, Xrec[:,:,38:39,:], axis=2)
+            # if Xrec.shape[3] == 39:
+            #     Xrec = np.append(Xrec, Xrec[...,38:39], axis=3)
+            #     Xrec = np.append(Xrec, Xrec[:,:,38:39,:], axis=2)
 
         _, nx, ny = Z0.shape
         nx = nx * args.fno_rescale
@@ -2170,11 +2183,14 @@ def main():
     #                 commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
     
     _, nx, ny = Z0.shape
+    padding = [1,1,1]
+    if nx == 39: padding = [1,1,0]
+    if nx == 45: padding = [1,0,0]
     if args.model == 'vqvae':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    shaconv=args.shaconv, grid=grid, conditional=args.conditional).to(device)
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding).to(device)
 
     if args.model == 'vae':
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
@@ -2274,6 +2290,7 @@ def main():
             vq_loss, data_recon, perplexity, dloss = model(data+ns)
             ## mean squared error: torch.mean((data_recon - data)**2)
             ## relative variance
+            # import pdb; pdb.set_trace()
             recon_error = F.mse_loss(data_recon, hr_data) / hr_data_variance
             physics_error = torch.tensor(0.0).to(data_recon.device)
             if args.physicsloss and (i % args.physicsloss_interval == 0):
