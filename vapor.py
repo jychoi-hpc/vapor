@@ -1040,7 +1040,8 @@ class Decoder(nn.Module):
 # %%
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, input_shape=None, shaconv=False, grid=None, conditional=False):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, 
+                 input_shape=None, shaconv=False, grid=None, conditional=False):
         super(Model, self).__init__()
         
         self._grid = grid
