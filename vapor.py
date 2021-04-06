@@ -1137,9 +1137,11 @@ class Model(nn.Module):
         self._shaconv = shaconv
 
         if self.conditional:
-            # modelfile = 'xgc-vgg19-ch1-N1000.torch'
-            # self.feature_extractor = XGCFeatureExtractor(modelfile)
-            self.feature_extractor = FeatureExtractor()
+            # XGC-VGG19
+            modelfile = 'xgc-vgg19-ch3-N1000.torch'
+            self.feature_extractor = XGCFeatureExtractor(modelfile)
+            # VGG
+            # self.feature_extractor = FeatureExtractor()
             self.feature_extractor = self.feature_extractor.to(device)
             self.feature_extractor.eval()
 
