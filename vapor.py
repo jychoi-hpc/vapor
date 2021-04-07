@@ -2246,7 +2246,7 @@ def main():
     if args.model == 'gan':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
-                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv).to(device)
+                    commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv, decoder_padding=padding).to(device)
         discriminator = Discriminator(args.num_channels, nx, ny).to(device)
         adversarial_loss = torch.nn.BCELoss().to(device)
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
@@ -2255,12 +2255,12 @@ def main():
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, conditional=args.conditional).to(device)
 
     if args.model == 'ae-vqvae':
-        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim).to(device)
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=400).to(device)
 
         model2 = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    shaconv=args.shaconv, grid=grid, conditional=args.conditional).to(device)
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding).to(device)
 
         optimizer2 = optim.Adam(model2.parameters(), lr=learning_rate, amsgrad=False)
 
@@ -2558,6 +2558,12 @@ def main():
                 start = [0,]*len(shape)
                 count = shape
                 fw.write('recon', Xbar.copy(), shape, start, count)
+                fw.write('Xbar', Xbar.copy(), shape, start, count)
+                fw.write('X0', X0.copy(), shape, start, count)
+                shape = zlb.shape
+                start = [0,]*len(shape)
+                count = shape
+                fw.write('zlb', zlb.copy(), shape, start, count)
             logging.info('Recon saved: %s'%fname)
             logging.info('Done.')
 
@@ -2608,6 +2614,16 @@ def main():
             for k, v in model._decoder.state_dict().items():
                 num_params += v.numel()
             info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
+
+        if args.model == 'ae-vqvae':
+            info ('-'*50)
+            num_params = 0
+            for k, v in model2.state_dict().items():
+                info ('%50s\t%20s\t%10d'%(k, list(v.shape), v.numel()))
+                num_params += v.numel()
+            info ('-'*50)
+            info ('%50s\t%20s\t%10d'%('Total', '', num_params))
+            info ('VQVAE (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
 if __name__ == "__main__":
     # torch.set_default_tensor_type(torch.DoubleTensor)
