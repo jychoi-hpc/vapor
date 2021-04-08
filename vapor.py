@@ -1775,7 +1775,7 @@ def main():
     parser.add_argument('--resampling', help='resampling', action='store_true')
     parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
     parser.add_argument('--overwrite', help='overwrite', action='store_true')
-    parser.add_argument('--learning_rate', help='learning_rate', type=float, default=1e-3)
+    parser.add_argument('--learning_rate', '--lr', help='learning_rate', type=float, default=1e-3)
     parser.add_argument('--shaconv', help='shaconv', action='store_true')
     parser.add_argument('--meshgrid', help='meshgrid', action='store_true')
     parser.add_argument('--fno_nmodes', help='fno num. of modes', type=int, default=12)
