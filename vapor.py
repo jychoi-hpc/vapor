@@ -1802,6 +1802,7 @@ def main():
     group1.add_argument('--physicsloss_interval', help='physicsloss_interval (default: %(default)s)', type=int, default=1)
     group1.add_argument('--randomread', help='randomread', type=float, default=0.0)
     group1.add_argument('--iphi', help='iphi', type=int, default=None)
+    group1.add_argument('--nodestride', help='nodestride', type=int, default=1)
     group1.add_argument('--splitfiles', help='splitfiles', action='store_true')
     group1.add_argument('--overwrap', help='overwrap', type=int, default=1)
     group1.add_argument('--inode', help='inode', type=int, default=0)
@@ -1952,7 +1953,7 @@ def main():
                 surfid_list = parse_rangestr(args.surfid)
                 node_list = list()
                 for i in surfid_list:
-                    _nodes = xgcexp.mesh.surf_nodes(i)
+                    _nodes = xgcexp.mesh.surf_nodes(i)[::args.nodestride]
                     logging.info (f'Surf idx, len: {i} {len(_nodes)}')
                     node_list.extend(_nodes)
                 if args.nnodes is not None:
