@@ -1750,6 +1750,7 @@ def main():
     parser.add_argument('--exp', help='exp')
     parser.add_argument('-n', '--num_training_updates', help='num_training_updates (default: %(default)s)', type=int, default=10_000)
     parser.add_argument('-E', '--embedding_dim', help='embedding_dim (default: %(default)s)', type=int, default=16)
+    parser.add_argument('-e', '--num_embeddings', help='num_embeddings (default: %(default)s)', type=int, default=512)
     parser.add_argument('-H', '--num_hiddens', help='num_hidden (default: %(default)s)', type=int, default=128)
     parser.add_argument('-R', '--num_residual_hiddens', help='num_residual_hiddens (default: %(default)s)', type=int, default=32)
     parser.add_argument('-L', '--num_residual_layers', help='num_residual_layers (default: %(default)s)', type=int, default=2)
@@ -1830,8 +1831,8 @@ def main():
     args = parser.parse_args()
 
     DIR=args.wdir
-    prefix='exp-%s-%s-B%d-C%d-H%d-R%d-L%d-E%d'%\
-        (args.dataset, args.model, args.batch_size, args.num_channels, args.num_hiddens, args.num_residual_hiddens, args.num_residual_layers, args.embedding_dim)
+    prefix='exp-%s-%s-B%d-C%d-H%d-R%d-L%d-E%d-e%d'%\
+        (args.dataset, args.model, args.batch_size, args.num_channels, args.num_hiddens, args.num_residual_hiddens, args.num_residual_layers, args.embedding_dim, args.num_embeddings)
     if args.exp is not None:
         prefix = '%s-%s'%(prefix, args.exp)
 
@@ -1920,7 +1921,7 @@ def main():
     num_residual_layers = args.num_residual_layers
 
     embedding_dim = args.embedding_dim
-    num_embeddings = 512
+    num_embeddings = args.num_embeddings
 
     commitment_cost = 0.25
     decay = 0.99
