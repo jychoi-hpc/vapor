@@ -52,8 +52,8 @@ parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first 
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient (default: %(default)s)")
 parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay (default: %(default)s)")
 parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation (default: %(default)s)")
-parser.add_argument("--hr_height", type=int, default=64, help="high res. image height (default: %(default)s)")
-parser.add_argument("--hr_width", type=int, default=80, help="high res. image width (default: %(default)s)")
+#parser.add_argument("--hr_height", type=int, default=64, help="high res. image height (default: %(default)s)")
+#parser.add_argument("--hr_width", type=int, default=80, help="high res. image width (default: %(default)s)")
 # parser.add_argument("--channels", type=int, default=1, help="number of image channels (default: %(default)s)")
 parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples (default: %(default)s)")
 parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between model checkpoints (default: %(default)s)")
@@ -103,48 +103,10 @@ logging.debug ('prefix: %s'%prefix)
 cuda = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-hr_shape = (opt.hr_height, opt.hr_width)
-
-# Initialize generator and discriminator
-generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
-discriminator = Discriminator(input_shape=(opt.nchannel, *hr_shape))
-if opt.model == 'VGG':
-    assert (opt.nchannel == 3)
-    feature_extractor = FeatureExtractor()
-else:
-    modelfile = 'nstx-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
-    feature_extractor = XGCFeatureExtractor(modelfile)
-
-# Set feature extractor to inference mode
-feature_extractor.eval()
-
-# Losses
-criterion_GAN = torch.nn.MSELoss()
-criterion_content = torch.nn.L1Loss()
-#criterion_content = torch.nn.MSELoss()
-
-if cuda:
-    generator = generator.cuda()
-    discriminator = discriminator.cuda()
-    feature_extractor = feature_extractor.cuda()
-    criterion_GAN = criterion_GAN.cuda()
-    criterion_content = criterion_content.cuda()
-
-if opt.epoch != 0:
-    # Load pretrained models
-    fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch)
-    fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch)
-    logging.debug ('Loading: %s %s'%(fname0, fname1))
-    generator.load_state_dict(torch.load(fname0))
-    discriminator.load_state_dict(torch.load(fname1))
-
-# Optimizers
-optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-
-Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
-
 # %%
+# ----------
+#  Data
+# ----------
 if opt.dataset == 'nstx':
     offset = 159065
     length = opt.nframes
@@ -202,6 +164,50 @@ if opt.nchannel == 3:
 training_data = torch.utils.data.TensorDataset(X_lr, X_hr)
 dataloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=True)
 validationloader = torch.utils.data.DataLoader(training_data, batch_size=opt.batch_size, shuffle=False)
+
+# ----------
+#  Models
+# ----------
+hr_shape = (X.shape[-2], X.shape[-1])
+
+# Initialize generator and discriminator
+generator = GeneratorResNet(in_channels=opt.nchannel, out_channels=opt.nchannel)
+discriminator = Discriminator(input_shape=(opt.nchannel, *hr_shape))
+if opt.model == 'VGG':
+    assert (opt.nchannel == 3)
+    feature_extractor = FeatureExtractor()
+else:
+    modelfile = 'nstx-vgg19-ch%d-%s.torch'%(opt.nchannel, opt.model) if opt.modelfile is None else opt.modelfile
+    feature_extractor = XGCFeatureExtractor(modelfile)
+
+# Set feature extractor to inference mode
+feature_extractor.eval()
+
+# Losses
+criterion_GAN = torch.nn.MSELoss()
+criterion_content = torch.nn.L1Loss()
+#criterion_content = torch.nn.MSELoss()
+
+if cuda:
+    generator = generator.cuda()
+    discriminator = discriminator.cuda()
+    feature_extractor = feature_extractor.cuda()
+    criterion_GAN = criterion_GAN.cuda()
+    criterion_content = criterion_content.cuda()
+
+if opt.epoch != 0:
+    # Load pretrained models
+    fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch)
+    fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch)
+    logging.debug ('Loading: %s %s'%(fname0, fname1))
+    generator.load_state_dict(torch.load(fname0))
+    discriminator.load_state_dict(torch.load(fname1))
+
+# Optimizers
+optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+
+Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
 # ----------
 #  Training
