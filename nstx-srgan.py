@@ -128,8 +128,10 @@ if opt.dataset == 'nstx':
 
 if opt.dataset == 'xgc':
     ## XGC
+    logging.getLogger().setLevel(logging.WARN)
     import xgc4py
     from vapor import read_f0_nodes
+    logging.getLogger().setLevel(logging.DEBUG)
     xgcexp = xgc4py.XGC(opt.datadir, step=opt.istep, device=device)
     surfid_list = parse_rangestr(opt.surfid)
     node_list = list()
@@ -140,6 +142,10 @@ if opt.dataset == 'xgc':
     nextnode_arr = xgcexp.nextnode_arr
     out = read_f0_nodes(opt.istep, node_list, expdir=opt.datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
     X = out[1].astype(np.float32)
+    zmin = out[4]
+    zmax = out[5]
+    zlb = out[6]
+    zlb = np.hstack([np.arange(len(zlb))[:,np.newaxis], zlb])
     logging.debug ('data size: %s'%list(X.shape))
     X = X[:opt.nframes,]
 
@@ -345,18 +351,45 @@ with torch.no_grad():
     for i, imgs in enumerate(validationloader):
         # Configure model input
         imgs_lr = imgs[0].to(device)
+        imgs_hr = imgs[1]
+        nb, nc, nh, nw = imgs_hr.shape
+
         gen_hr = generator(imgs_lr)
+        gen_hr = gen_hr[:,:,:nh,:nw]
 
         _gen_hr = gen_hr.detach()
         _gen_hr = torch.max(_gen_hr, axis=1)[0]
         gen_list.append(_gen_hr.detach().cpu().numpy())
 
-Y = np.vstack(gen_list)
+Xbar = np.vstack(gen_list)
 fname = "%s/recon.bp"%(prefix)
-with ad2.open(fname, 'w') as fw:
-    shape = Y.shape
-    start = [0,]*len(shape)
-    count = shape
-    fw.write('gpiData', Y.copy(), shape, start, count)
+
+if opt.dataset == 'nstx':
+    with ad2.open(fname, 'w') as fw:
+        shape = Xbar.shape
+        start = [0,]*len(shape)
+        count = shape
+        fw.write('recon', Xbar.copy(), shape, start, count)
+
+if opt.dataset == 'xgc':
+    ## Normalize
+    xmin = np.min(Xbar, axis=(1,2))
+    xmax = np.max(Xbar, axis=(1,2))
+    Xbar = (Xbar-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+
+    ## Un-normalize
+    X0 = Xbar*((zmax-zmin)[:,np.newaxis,np.newaxis])+zmin[:,np.newaxis,np.newaxis]
+
+    with ad2.open(fname, 'w') as fw:
+        shape = Xbar.shape
+        start = [0,]*len(shape)
+        count = shape
+        fw.write('Xbar', Xbar.copy(), shape, start, count)
+        fw.write('X0', X0.copy(), shape, start, count)
+        shape = zlb.shape
+        start = [0,]*len(shape)
+        count = shape
+        fw.write('zlb', zlb.copy(), shape, start, count)
+
 logging.info('Recon saved: %s'%fname)
 logging.info('Done.')
