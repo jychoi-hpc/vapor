@@ -74,8 +74,11 @@ group.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='da
 parser.set_defaults(dataset='nstx')
 group = parser.add_argument_group('XGC', 'XGC processing options')
 group.add_argument('--datadir', help='data directory (default: %(default)s)', default='d3d_coarse_v2')
+group.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)')
 group.add_argument('--surfid', help='flux surface index')
 group.add_argument('--iphi', help='iphi', type=int, default=None)
+group.add_argument('--istep', help='istep', type=int, default=420)
+group.add_argument('--nodestride', help='nodestride', type=int, default=1)
 opt = parser.parse_args()
 
 prefix='srgan-%s-%s-ch%d'%(opt.dataset, opt.model, opt.nchannel)
@@ -165,20 +168,34 @@ if opt.dataset == 'xgc':
     ## XGC
     import xgc4py
     from vapor import read_f0_nodes
-    xgcexp = xgc4py.XGC(opt.datadir, step=420, device=device)
+    xgcexp = xgc4py.XGC(opt.datadir, step=opt.istep, device=device)
     surfid_list = parse_rangestr(opt.surfid)
     node_list = list()
     for i in surfid_list:
-        _nodes = xgcexp.mesh.surf_nodes(i)
+        _nodes = xgcexp.mesh.surf_nodes(i)[::opt.nodestride]
         logging.info (f'Surf idx, len: {i} {len(_nodes)}')
         node_list.extend(_nodes)
     nextnode_arr = xgcexp.nextnode_arr
-    out = read_f0_nodes(420, node_list, expdir=opt.datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
+    out = read_f0_nodes(opt.istep, node_list, expdir=opt.datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
     X = out[1].astype(np.float32)
     logging.debug ('data size: %s'%list(X.shape))
     X = X[:opt.nframes,]
 
-X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(X[:,np.newaxis,:,:])
+    if opt.hr_datadir is not None:
+        node_list = list()
+        for i in surfid_list:
+            _nodes = xgcexp.mesh.surf_nodes(i)[::opt.nodestride]
+            logging.info (f'Surf idx, len: {i} {len(_nodes)}')
+            node_list.extend(_nodes)
+        nextnode_arr = xgcexp.nextnode_arr
+        out = read_f0_nodes(opt.istep, node_list, expdir=opt.hr_datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
+        H = out[1].astype(np.float32)
+        logging.debug ('data size: %s'%list(H.shape))
+        H = H[:opt.nframes,]
+    else:
+        H = X
+
+X_lr, X_hr, = torch.tensor(X[:,np.newaxis,::4,::4]), torch.tensor(H[:,np.newaxis,:,:])
 if opt.nchannel == 3:
     X_lr = torch.cat((X_lr,X_lr,X_lr), axis=1)
     X_hr = torch.cat((X_hr,X_hr,X_hr), axis=1)
