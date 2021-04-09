@@ -34,9 +34,18 @@ import adios2 as ad2
 from datetime import datetime
 from pathlib import Path
 
+def parse_rangestr(rangestr):
+    _rangestr = rangestr.replace(' ', '')
+    # Convert String ranges to list 
+    # Using sum() + list comprehension + enumerate() + split() 
+    res = sum(((list(range(*[int(b) + c  
+            for c, b in enumerate(a.split('-'))])) 
+            if '-' in a else [int(a)]) for a in _rangestr.split(',')), [])
+    return res
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from (default: %(default)s)")
-parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training (default: %(default)s)")
+parser.add_argument("--n_epochs", '-n', type=int, default=100, help="number of epochs of training (default: %(default)s)")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches (default: %(default)s)")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate (default: %(default)s)")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient (default: %(default)s)")
@@ -65,6 +74,8 @@ group.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='da
 parser.set_defaults(dataset='nstx')
 group = parser.add_argument_group('XGC', 'XGC processing options')
 group.add_argument('--datadir', help='data directory (default: %(default)s)', default='d3d_coarse_v2')
+group.add_argument('--surfid', help='flux surface index')
+group.add_argument('--iphi', help='iphi', type=int, default=None)
 opt = parser.parse_args()
 
 prefix='srgan-%s-%s-ch%d'%(opt.dataset, opt.model, opt.nchannel)
@@ -155,13 +166,14 @@ if opt.dataset == 'xgc':
     import xgc4py
     from vapor import read_f0_nodes
     xgcexp = xgc4py.XGC(opt.datadir, step=420, device=device)
+    surfid_list = parse_rangestr(opt.surfid)
     node_list = list()
-    for i in (71,72,73,74,75,76,77):
+    for i in surfid_list:
         _nodes = xgcexp.mesh.surf_nodes(i)
         logging.info (f'Surf idx, len: {i} {len(_nodes)}')
         node_list.extend(_nodes)
     nextnode_arr = xgcexp.nextnode_arr
-    out = read_f0_nodes(420, node_list, expdir=opt.datadir, iphi=None, nextnode_arr=nextnode_arr)
+    out = read_f0_nodes(420, node_list, expdir=opt.datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
     X = out[1].astype(np.float32)
     logging.debug ('data size: %s'%list(X.shape))
     X = X[:opt.nframes,]
@@ -185,6 +197,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # Configure model input
         imgs_lr = imgs[0].to(device)
         imgs_hr = imgs[1].to(device)
+        nb, nc, nh, nw = imgs_hr.shape
         # print ('imgs_lr, imgs_hr:', list(imgs_lr.shape), list(imgs_hr.shape))
         
         # n2 = (64-imgs_lr.shape[3])//2
@@ -209,6 +222,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         # Generate a high resolution image from low resolution input
         gen_hr = generator(imgs_lr)
+        gen_hr = gen_hr[:,:,:nh,:nw]
+
         # print ('imgs_lr', imgs_lr.min().item(), imgs_lr.max().item(), imgs_lr.mean().item())
         # print ('gen_hr', gen_hr.min().item(), gen_hr.max().item(), gen_hr.mean().item())
         
@@ -219,7 +234,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
         out = discriminator(gen_hr)
 
         nb, nc, nh, nw = out.shape
-        output_shape = (nh, nw)
+        output_shape = (nc, nh, nw)
         valid = Variable(Tensor(np.ones((imgs_lr.size(0), *output_shape))), requires_grad=False)
         fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *output_shape))), requires_grad=False)
 
@@ -280,6 +295,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
             _gen_hr = gen_hr
 
             _imgs_lr = nn.functional.interpolate(_imgs_lr, scale_factor=4, mode='nearest')
+            _imgs_lr = _imgs_lr[:,:,:nh,:nw]
             
             _imgs_lr = torch.max(_imgs_lr, axis=1)[0].reshape(nb, 1, nh, nw)
             _imgs_hr = torch.max(_imgs_hr, axis=1)[0].reshape(nb, 1, nh, nw)
