@@ -56,14 +56,12 @@ parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads 
 #parser.add_argument("--hr_width", type=int, default=80, help="high res. image width (default: %(default)s)")
 # parser.add_argument("--channels", type=int, default=1, help="number of image channels (default: %(default)s)")
 parser.add_argument("--sample_interval", type=int, default=1000, help="interval between saving image samples (default: %(default)s)")
-parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between model checkpoints (default: %(default)s)")
+parser.add_argument("--checkpoint_interval", '-x', type=int, default=10, help="interval between model checkpoints (default: %(default)s)")
 parser.add_argument('--nchannel', type=int, default=1, help='num. of channels (default: %(default)s)')
 parser.add_argument('--modelfile', help='modelfile (default: %(default)s)')
-parser.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
 parser.add_argument('--nofeatureloss', help='no feature loss', action='store_true')
 parser.add_argument('--log', help='log', action='store_true')
 parser.add_argument('--suffix', help='suffix')
-parser.add_argument('--gaussian', help='apply gaussian filter', action='store_true')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--VGG', help='use VGG 3-channel model', action='store_const', dest='model', const='VGG')
 group.add_argument('--N1024', help='use XGC 1-channel N1024 model', action='store_const', dest='model', const='N1024')
@@ -72,6 +70,9 @@ group = parser.add_mutually_exclusive_group()
 group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
 group.add_argument('--nstx', help='NSTX dataset', action='store_const', dest='dataset', const='nstx')
 parser.set_defaults(dataset='nstx')
+group = parser.add_argument_group('NSTX', 'NSTX processing options')
+group.add_argument('--gaussian', help='apply gaussian filter', action='store_true')
+group.add_argument("--nframes", type=int, default=16_000, help="number of frames to load")
 group = parser.add_argument_group('XGC', 'XGC processing options')
 group.add_argument('--datadir', help='data directory (default: %(default)s)', default='d3d_coarse_v2')
 group.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)')
@@ -202,6 +203,15 @@ if cuda:
     criterion_content = criterion_content.cuda()
 
 if opt.epoch != 0:
+    # import glob
+    # fnames = glob.glob('%s/generator_*.pth'%(prefix))
+    # epoch_list = list()
+    # for name in fnames:
+    #     m = re.search(r'generator_([0-9]+).pth', name)
+    #     epoch = int(m.group(1))
+    #     epoch_list.append(epoch)
+    # epoch = max(epoch_list)
+
     # Load pretrained models
     fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch)
     fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch)
@@ -219,7 +229,8 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 #  Training
 # ----------
 
-for epoch in range(opt.epoch, opt.n_epochs):
+epoch_end = opt.epoch + opt.n_epochs
+for epoch in range(opt.epoch, epoch_end):
     abs_list = list()
     for i, imgs in enumerate(dataloader):
 
@@ -312,7 +323,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
         abs_list.append(abserr)
         logging.debug(
             "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] ABS: %f"
-            % (epoch, opt.n_epochs, i, len(dataloader), loss_D.item(), loss_G.item(), abserr)
+            % (epoch, epoch_end, i, len(dataloader), loss_D.item(), loss_G.item(), abserr)
         )
 
         batches_done = epoch * len(dataloader) + i
@@ -337,10 +348,10 @@ for epoch in range(opt.epoch, opt.n_epochs):
             save_image(img_grid, "%s/%d.png" % (prefix, batches_done), normalize=False)
     
     logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
-    if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    if (epoch+1) % opt.checkpoint_interval == 0:
         # Save model checkpoints
-        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch))
-        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch))
+        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch+1))
+        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch+1))
 
 # --------------
 #  Recon
