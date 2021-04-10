@@ -126,6 +126,7 @@ if opt.dataset == 'nstx':
     xmin = np.min(X, axis=(1,2))
     xmax = np.max(X, axis=(1,2))
     X = (X-xmin[:,np.newaxis,np.newaxis])/(xmax-xmin)[:,np.newaxis,np.newaxis]
+    H = X
 
 if opt.dataset == 'xgc':
     ## XGC
@@ -347,22 +348,27 @@ for epoch in range(opt.epoch, epoch_end):
             img_grid = torch.cat((_imgs_lr, _imgs_hr, _gen_hr), -1)
             save_image(img_grid, "%s/%d.png" % (prefix, batches_done), normalize=False)
     
-    logging.debug ('ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
+    logging.debug ('Epoch ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
     if (epoch+1) % opt.checkpoint_interval == 0:
         # Save model checkpoints
-        torch.save(generator.state_dict(), "%s/generator_%d.pth" % (prefix, epoch+1))
-        torch.save(discriminator.state_dict(), "%s/discriminator_%d.pth" % (prefix, epoch+1))
+        fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch+1)
+        fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch+1)
+        torch.save(generator.state_dict(), fname0)
+        torch.save(discriminator.state_dict(), fname1)
+        logging.debug ('Saved: %s %s'%(fname0, fname1))
 
 # --------------
 #  Recon
 # --------------
 generator.eval()
+discriminator.eval()
 gen_list = list()
+abs_list = list()
 with torch.no_grad():
     for i, imgs in enumerate(validationloader):
         # Configure model input
         imgs_lr = imgs[0].to(device)
-        imgs_hr = imgs[1]
+        imgs_hr = imgs[1].to(device)
         nb, nc, nh, nw = imgs_hr.shape
 
         gen_hr = generator(imgs_lr)
@@ -370,7 +376,14 @@ with torch.no_grad():
 
         _gen_hr = gen_hr.detach()
         _gen_hr = torch.max(_gen_hr, axis=1)[0]
+        _imgs_hr = imgs_hr.detach()
+        _imgs_hr = torch.max(_imgs_hr, axis=1)[0]
+
         gen_list.append(_gen_hr.detach().cpu().numpy())
+
+        abserr = torch.max(torch.abs(_gen_hr-_imgs_hr)).item()
+        abs_list.append(abserr)
+logging.debug ('Recon ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
 
 Xbar = np.vstack(gen_list)
 fname = "%s/recon.bp"%(prefix)
@@ -381,6 +394,10 @@ if opt.dataset == 'nstx':
         start = [0,]*len(shape)
         count = shape
         fw.write('recon', Xbar.copy(), shape, start, count)
+        shape = H.shape
+        start = [0,]*len(shape)
+        count = shape
+        fw.write('gpi', H.copy(), shape, start, count)
 
 if opt.dataset == 'xgc':
     ## Normalize
