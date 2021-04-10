@@ -351,8 +351,8 @@ for epoch in range(opt.epoch, epoch_end):
     logging.debug ('Epoch ABS error: %g %g %g'%(np.min(abs_list), np.mean(abs_list), np.max(abs_list)))
     if (epoch+1) % opt.checkpoint_interval == 0:
         # Save model checkpoints
-        fname0 = "%s/generator_%d.pth"%(prefix, opt.epoch+1)
-        fname1 = "%s/discriminator_%d.pth"%(prefix, opt.epoch+1)
+        fname0 = "%s/generator_%d.pth"%(prefix, epoch+1)
+        fname1 = "%s/discriminator_%d.pth"%(prefix, epoch+1)
         torch.save(generator.state_dict(), fname0)
         torch.save(discriminator.state_dict(), fname1)
         logging.debug ('Saved: %s %s'%(fname0, fname1))
