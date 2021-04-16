@@ -149,7 +149,7 @@ if opt.dataset == 'xgc':
     zlb = out[6]
     zlb = np.hstack([np.arange(len(zlb))[:,np.newaxis], zlb])
     logging.debug ('data size: %s'%list(X.shape))
-    X = X[:opt.nframes,]
+    #X = X[:opt.nframes,]
 
     if opt.hr_datadir is not None:
         node_list = list()
@@ -161,7 +161,7 @@ if opt.dataset == 'xgc':
         out = read_f0_nodes(opt.istep, node_list, expdir=opt.hr_datadir, iphi=opt.iphi, nextnode_arr=nextnode_arr)
         H = out[1].astype(np.float32)
         logging.debug ('data size: %s'%list(H.shape))
-        H = H[:opt.nframes,]
+        #H = H[:opt.nframes,]
     else:
         H = X
 
