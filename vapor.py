@@ -1980,6 +1980,8 @@ def main():
         zmin = np.r_[(lst[4])]
         zmax = np.r_[(lst[5])]
         zlb = np.r_[(lst[6])] ## array of (idx, step, iphi, inode)
+        if zlb.ndim == 1:
+            zlb = zlb[:,np.newaxis]
         zlb = np.hstack([np.arange(len(zlb))[:,np.newaxis], zlb])
         ## z-score normalization
         #Zif = (Zif - zmu[:,np.newaxis,np.newaxis])/zsig[:,np.newaxis,np.newaxis]
