@@ -2561,9 +2561,9 @@ def main():
                 shape = Xbar.shape
                 start = [0,]*len(shape)
                 count = shape
-                fw.write('recon', Xbar.copy(), shape, start, count)
                 fw.write('Xbar', Xbar.copy(), shape, start, count)
                 fw.write('X0', X0.copy(), shape, start, count)
+                fw.write('Zif', Zif.copy(), shape, start, count)
                 shape = zlb.shape
                 start = [0,]*len(shape)
                 count = shape
