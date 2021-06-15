@@ -283,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument('--rand', type=float, help='rand', default=1.0)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--grey', help='grey', action='store_const', dest='mode', const='grey')
+    group.add_argument('--grey4x', help='grey 4x low-resolution', action='store_const', dest='mode', const='grey4x')
     group.add_argument('--only2', help='only2', action='store_const', dest='mode', const='only2')
     group.add_argument('--full', help='full', action='store_const', dest='mode', const='full')
     parser.set_defaults(mode='full')
@@ -394,18 +395,20 @@ if __name__ == "__main__":
         os.makedirs(outdir, exist_ok=True)
 
 
-        if args.mode == 'grey':    
+        if args.mode in ('grey', 'grey4x'):    
             for iphi in range(1): #,f0_f.shape[0]):
                 for inode in range(f0_f.shape[1]):
                     #print (iphi, inode)
                     X  = f0_f[iphi,inode,:,:]
                     X = (X-X.min())/(X.max()-X.min())*255
                     X = X.astype(np.float32).copy()
+                    if args.mode == 'grey4x':
+                        X = X[::4,::4]
 
                     im = Image.fromarray(np.uint8(X))
-                    im = im.resize((256, 256))
+                    im = im.resize((160, 160))
                     #fname = '%s/%d-%d-%05d.jpg'%(outdir,420,iphi,inode)
-                    fname = '%s/%06d.jpg'%(outdir,inode)
+                    fname = '%s/%06d.png'%(outdir,inode)
                     im.save(fname)
 
                     if inode%1000 == 0: print (fname)
