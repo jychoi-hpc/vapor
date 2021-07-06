@@ -1397,7 +1397,8 @@ class AE(nn.Module):
         if self.conditional:
             # modelfile = 'xgc-vgg19-ch1-N1000.torch'
             # self.feature_extractor = XGCFeatureExtractor(modelfile)
-            self.feature_extractor = FeatureExtractor()
+            ## VGG pre-built model: 3-channel -> 256 feature vector
+            self.feature_extractor = FeatureExtractor() 
             self.feature_extractor = self.feature_extractor.to(device)
             self.feature_extractor.eval()
             self.feature_encoder = nn.Sequential(
@@ -1436,7 +1437,10 @@ class AE(nn.Module):
 
     def forward(self, x):
         if self.conditional:
-            #import pdb; pdb.set_trace()
+            ## x.shape: [32, 1, 39, 39]
+            ## feature.shape: [32, 256, 9, 9]
+            ## flat.shape: [32, 256]
+            ## y.shape: [32, 16]
             _x = torch.cat((x,x,x), axis=1)
             feature = self.feature_extractor(_x)
             flat = torch.mean(feature, dim=(2,3))
@@ -2303,6 +2307,7 @@ def main():
         optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae':
+        log ('AE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, conditional=args.conditional).to(device)
 
     if args.model == 'ae-vqvae':
