@@ -2329,6 +2329,7 @@ def main():
     log ('istart:', istart)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20_000,30_000,40_000], gamma=0.1)
 
     dmodel = None
     if args.learndiff2:
@@ -2493,6 +2494,7 @@ def main():
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error.item())
+        scheduler.step()
 
         if args.resampling and (i % resampling_interval == 0):
             err_list, _ = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, conditional=args.conditional)
@@ -2526,7 +2528,7 @@ def main():
             if (i % args.checkpoint_interval == 0) and (rank == 0):
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
             rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
-            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
+            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g} LR: {optimizer.param_groups[0]["lr"]:g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
