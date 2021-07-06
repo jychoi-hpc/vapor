@@ -514,13 +514,17 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
 
     if average:
         Z0 = np.mean(Z0, axis=0)
-        zlb = lb
+        _lb = list()
+        for k in lb:
+            _lb.append((istep, -1, k))
+        zlb = np.array(_lb)
     else:
         Z0 = Z0.reshape((-1,Z0.shape[2],Z0.shape[3]))
         _lb = list()
         for i in range(nphi):
-            _lb.append( i*100_000_000 + lb)
-        zlb = np.concatenate(_lb)
+            for k in lb:
+                _lb.append((istep, i, k))
+        zlb = np.array(_lb)
     
     #zlb = np.concatenate(li)
     zmu = np.mean(Z0, axis=(1,2))
@@ -2277,8 +2281,8 @@ def main():
         _rz.imag = rz[:,1]
         
         global da
-        da = np.zeros_like(rz) ## list of distance and angle pair
-        for _, inode in zlb:
+        da = np.zeros((len(zlb), 2), dtype=np.float32) ## list of distance and angle pair
+        for inode in  zlb[:,3]:
             dist = np.linalg.norm(_rz[inode] - _rz[0])
             angle = np.angle(_rz[inode] - _rz[0])
             da[inode,0] = dist
