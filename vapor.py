@@ -585,7 +585,7 @@ def average_gradients(model):
             #print ('[%d] %d: %s (a): %f'%(rank, i, name, param.data.sum()))
 
 # %%
-def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False, conditional=False):
+def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='vqvae', return_encode=False, conditional=False):
     """
     Reconstructing data based on a trained model
     """
@@ -606,8 +606,13 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
             nbatch, nchannel, dim1, dim2 = valid_originals.shape
-            if modelname == 'vae':
-                valid_reconstructions, mu, logvar = model(valid_originals)
+            if modelname in ('vae', 'cvae'):
+                _da = None
+                if args.model == 'cvae':
+                    global da
+                    _da = da[zlb[i:i+nbatch,-1],]
+
+                valid_reconstructions, mu, logvar = model(valid_originals, _da)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
             elif modelname in ('ae','ae2d'):
@@ -697,11 +702,11 @@ def recon(model, Xif, zmin, zmax, num_channels=16, dmodel=None, modelname='vqvae
     else:
         return (X0, Xbar, np.mean(X0, axis=(1,2)), Xenc)
 
-def estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname, fname=None, conditional=False, nosort=False):
+def estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname, fname=None, conditional=False, nosort=False):
     """
     Error calculation
     """
-    X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, modelname=modelname, conditional=conditional)
+    X0, Xbar, xmu = recon(model, Xif, zmin, zmax, zlb, num_channels=num_channels, modelname=modelname, conditional=conditional)
 
     rmse_list = list()
     abs_list = list()
@@ -1293,10 +1298,13 @@ class ResidualLinearStack(nn.Module):
         return F.relu(x)
 
 """
-Credit: https://github.com/pytorch/examples/tree/master/vae
+Credit: 
+VAE: https://github.com/pytorch/examples/tree/master/vae
+CVAE: https://github.com/timbmg/VAE-CVAE-MNIST/blob/master/models.py
 """
 class VAE(nn.Module):
-    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers, shaconv=False):
+    ## (2021/07) Add conditional for CVAE. We use distance and angle for conditional values
+    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers, shaconv=False, conditional=False):
         super(VAE, self).__init__()
 
         self.nc = nc
@@ -1308,10 +1316,13 @@ class VAE(nn.Module):
         self.num_residual_layers = num_residual_layers
         info ("VAE (nc,nx,ny,nh,nz):", nc, nx, ny, nh, nz)
 
-        self.fc1 = nn.Linear(self.nx*self.ny, self.nh)
+        self.ncond = 0
+        if conditional:
+            self.ncond = 2
+        self.fc1 = nn.Linear(self.nx*self.ny + self.ncond, self.nh)
         self.fc21 = nn.Linear(self.nh, self.nz)
         self.fc22 = nn.Linear(self.nh, self.nz)
-        self.fc3 = nn.Linear(self.nz, self.nh)
+        self.fc3 = nn.Linear(self.nz + self.ncond, self.nh)
         self.fc4 = nn.Linear(self.nh, self.nx*self.ny)
 
         self.rs = ResidualLinearStack(in_channels=self.nh,
@@ -1321,7 +1332,11 @@ class VAE(nn.Module):
         
         self._shaconv = shaconv
 
-    def encode(self, x):
+    def encode(self, x, da=None):
+        if self.ncond > 0:
+            assert da is not None
+            x = torch.cat((x, da), dim=-1)
+
         x = F.relu(self.fc1(x))
         x = self.rs(x)
         return self.fc21(x), self.fc22(x)
@@ -1331,7 +1346,11 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def decode(self, z):
+    def decode(self, z, da=None):
+        if self.ncond > 0:
+            assert da is not None
+            z = torch.cat((z, da), dim=-1)
+
         x = F.relu(self.fc3(z))
         x = self.rs(x)
         x = torch.sigmoid(self.fc4(x))
@@ -1339,14 +1358,14 @@ class VAE(nn.Module):
         # x = self.fc4(x)
         return x
 
-    def forward(self, x):
+    def forward(self, x, da=None):
         ## sha conv
         if self._shaconv:
             x = conv_hash_torch(x)
 
-        mu, logvar = self.encode(x.view(-1, self.nx*self.ny))
+        mu, logvar = self.encode(x.view(-1, self.nx*self.ny), da)
         z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
+        return self.decode(z, da), mu, logvar
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def loss_function(self, recon_x, x, mu, logvar):
@@ -1760,7 +1779,7 @@ def main():
     parser.add_argument('--wdir', help='working directory (default: current)', default=os.getcwd())
     parser.add_argument('--datadir', help='data directory (default: %(default)s)', default='d3d_coarse_v2')
     parser.add_argument('--hr_datadir', help='HR data directory (default: %(default)s)')
-    parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int)
+    parser.add_argument('--timesteps', help='timesteps', nargs='+', type=int, default=[420,])
     # parser.add_argument('--surfid', help='flux surface index', nargs='+', type=int)
     parser.add_argument('--surfid', help='flux surface index')
     parser.add_argument('--untwist', help='untwist', action='store_true')
@@ -1821,8 +1840,9 @@ def main():
     group2.add_argument('--gaussian', help='apply gaussian filter', action='store_true')
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--vae', help='vqvae model', action='store_const', dest='model', const='vae')
-    group.add_argument('--vqvae', help='vae model', action='store_const', dest='model', const='vqvae')
+    group.add_argument('--vae', help='vae model', action='store_const', dest='model', const='vae')
+    group.add_argument('--cvae', help='cvae model', action='store_const', dest='model', const='cvae')
+    group.add_argument('--vqvae', help='vqvae model', action='store_const', dest='model', const='vqvae')
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
@@ -1936,6 +1956,7 @@ def main():
     ## Reading data
     global Z0, zmu, zsig, zmin, zmax, zlb
     info ('Dataset:', args.dataset)
+    assert(args.timesteps is not None)
     if args.dataset == 'xgc':
         ## (2020/12) single timestep. temporary.
         xgcexp = xgc4py.XGC(args.datadir, step=args.timesteps[0], device=device)
@@ -2246,6 +2267,25 @@ def main():
 
     if args.model == 'vae':
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
+
+    if args.model == 'cvae':
+        fname2 = os.path.join(args.datadir, 'xgc.mesh.bp')
+        with ad2.open(fname2, 'r') as f:
+            rz = f.read('rz')
+
+        _rz = np.array(rz[:,0], dtype=complex)
+        _rz.imag = rz[:,1]
+        
+        global da
+        da = np.zeros_like(rz) ## list of distance and angle pair
+        for _, inode in zlb:
+            dist = np.linalg.norm(_rz[inode] - _rz[0])
+            angle = np.angle(_rz[inode] - _rz[0])
+            da[inode,0] = dist
+            da[inode,1] = angle
+        da = torch.tensor(da, dtype=torch.float).to(device)
+
+        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, conditional=True).to(device)
     
     if args.model == 'gan':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
@@ -2368,8 +2408,12 @@ def main():
                 average_gradients(model)
             optimizer.step()
 
-        if args.model == 'vae':
-            recon_batch, mu, logvar = model(data)
+        if args.model in ('vae', 'cvae'):
+            _da = None
+            if args.model == 'cvae':
+                _da = da[lb[:,0,-1],]
+            recon_batch, mu, logvar = model(data, _da)
+
             loss = model.loss_function(recon_batch, hr_data, mu, logvar)
             recon_error = F.mse_loss(recon_batch, hr_data.view(-1, nx*ny)) / hr_data_variance
             perplexity = torch.tensor(0)
@@ -2451,7 +2495,7 @@ def main():
         train_res_physics_error.append(physics_error.item())
 
         if args.resampling and (i % resampling_interval == 0):
-            err_list, _ = estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname=args.model, conditional=args.conditional)
+            err_list, _ = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, conditional=args.conditional)
             err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
             lxx = [ lx[i] for i in idx ]
@@ -2481,7 +2525,7 @@ def main():
             fname = None
             if (i % args.checkpoint_interval == 0) and (rank == 0):
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
-            rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
+            rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
             logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
@@ -2552,7 +2596,7 @@ def main():
         logging.info ('Reconstructing ...')
         if args.model == 'ae-vqvae':
             dmodel = model2
-        X0, Xbar, xmu = recon(model, Xif, zmin, zmax, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
+        X0, Xbar, xmu = recon(model, Xif, zmin, zmax, zlb, num_channels=num_channels, dmodel=dmodel, modelname=args.model, conditional=args.conditional)
         log (Xif.shape, Xbar.shape)
 
         if args.saverecon:
