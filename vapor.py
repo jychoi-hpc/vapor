@@ -2283,7 +2283,10 @@ def main():
             angle = np.angle(_rz[inode] - _rz[0])
             da[inode,0] = dist
             da[inode,1] = angle
+        da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
+        log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
         da = torch.tensor(da, dtype=torch.float).to(device)
+        
 
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, conditional=True).to(device)
     
@@ -2528,7 +2531,7 @@ def main():
             if (i % args.checkpoint_interval == 0) and (rank == 0):
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
             rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
-            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g} LR: {optimizer.param_groups[0]["lr"]:g}')
+            logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g} Next LR: {optimizer.param_groups[0]["lr"]:g}')
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
