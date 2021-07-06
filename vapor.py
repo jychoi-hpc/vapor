@@ -2357,7 +2357,7 @@ def main():
     num_training_updates = args.num_training_updates
     resampling_interval = len(lx)//batch_size*10 if args.resampling_interval is None else args.resampling_interval
     logging.info (f'Rsampling, resampling interval: {args.resampling} {resampling_interval}')
-    total_trained = np.ones(len(lx), dtype=np.int)
+    total_trained = np.ones(len(lx), dtype=np.int32)
     logging.info ('Training: %d' % num_training_updates)
     model.train()
     ns = 0.0 
