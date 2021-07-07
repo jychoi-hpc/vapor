@@ -1812,6 +1812,7 @@ def main():
     parser.add_argument('--vgg', help='vgg', action='store_true')
     parser.add_argument('--conditional', help='conditional', action='store_true')
     parser.add_argument('--hr', help='high resolution', action='store_true')
+    parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=[20_000,30_000,40_000])
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -2341,7 +2342,7 @@ def main():
     log ('istart:', istart)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20_000,30_000,40_000], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=0.1)
 
     dmodel = None
     if args.learndiff2:
