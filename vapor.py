@@ -593,6 +593,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
     """
     Reconstructing data based on a trained model
     """
+    global da
     mode = model.training
     model.eval()
     with torch.no_grad():
@@ -613,14 +614,17 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
             if modelname in ('vae', 'cvae'):
                 _da = None
                 if args.model == 'cvae':
-                    global da
                     _da = da[zlb[i:i+nbatch,-1],]
 
                 valid_reconstructions, mu, logvar = model(valid_originals, _da)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
                 lz.append((valid_reconstructions).cpu().data.numpy())
-            elif modelname in ('ae','ae2d'):
-                valid_encode = model.encode(valid_originals)
+            elif modelname in ('ae','cae','ae2d'):
+                _da = None
+                if args.model == 'cae':
+                    _da = da[zlb[i:i+nbatch,-1],]
+
+                valid_encode = model.encode(valid_originals, _da)
                 if args.conditional:
                     x = valid_originals
                     _x = torch.cat((x,x,x), axis=1)
@@ -629,7 +633,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
                     y = model.feature_encoder(flat)
                     valid_encode = torch.cat((valid_encode,y), axis=1)
 
-                valid_reconstructions = model.decode(valid_encode)
+                valid_reconstructions = model.decode(valid_encode, _da)
                 
                 lz.append((valid_reconstructions).cpu().data.numpy())
                 encode_list.append(valid_encode)
@@ -1388,7 +1392,7 @@ class VAE(nn.Module):
 Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
 """
 class AE(nn.Module):
-    def __init__(self, input_dim, embedding_dim, conditional=False):
+    def __init__(self, input_dim, embedding_dim, conditional=False, da_conditional=False):
         super().__init__()
 
         self.conditional = conditional
@@ -1407,35 +1411,45 @@ class AE(nn.Module):
                 )
             _embedding_dim = embedding_dim*2
 
+        self.ncond = 0
+        if da_conditional:
+            self.ncond = 2
+
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
         self._encoder = nn.Sequential(
-            nn.Linear(input_dim, embedding_dim),
+            nn.Linear(input_dim + self.ncond, embedding_dim),
             nn.LeakyReLU(True),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(True),
             )
 
         self._decoder = nn.Sequential(
-            nn.Linear(_embedding_dim, embedding_dim),
+            nn.Linear(_embedding_dim + self.ncond, embedding_dim),
             nn.LeakyReLU(True),
             nn.Linear(embedding_dim, input_dim),
             nn.LeakyReLU(True),
             )
     
-    def encode(self, x):
+    def encode(self, x, da=None):
         self.nbatch, self.nc, self.nx, self.ny = x.shape
         x = x.view(self.nbatch, -1)
+
+        if self.ncond > 0:
+            x = torch.cat((x, da), dim=-1)
 
         x = self._encoder(x)
         return x
 
-    def decode(self, x):
+    def decode(self, x, da=None):
+        if self.ncond > 0:
+            x = torch.cat((x, da), dim=-1)
+
         x = self._decoder(x)
 
         x = x.view(self.nbatch, self.nc, self.nx, self.ny)
         return x
 
-    def forward(self, x):
+    def forward(self, x, da=None):
         if self.conditional:
             ## x.shape: [32, 1, 39, 39]
             ## feature.shape: [32, 256, 9, 9]
@@ -1452,10 +1466,10 @@ class AE(nn.Module):
             # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
             # quantized = torch.cat((quantized, cond), dim=1)
 
-        x = self.encode(x)
+        x = self.encode(x, da)
         if self.conditional:
             x = torch.cat((x,y), axis=1)
-        x = self.decode(x)
+        x = self.decode(x, da)
 
         # nbatch, nc, nx, ny = x.shape
         # x = x.view(nbatch, -1)
@@ -1855,6 +1869,7 @@ def main():
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
+    group.add_argument('--cae', help='cae model', action='store_const', dest='model', const='cae')
     group.add_argument('--ae-vqvae', help='ae-vqvae model', action='store_const', dest='model', const='ae-vqvae')
     group.add_argument('--ae2d', help='ae conv2d model', action='store_const', dest='model', const='ae2d')
     parser.set_defaults(model='vqvae')
@@ -2264,6 +2279,25 @@ def main():
     #                 num_embeddings, embedding_dim, 
     #                 commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff).to(device)
     
+    def setup_da():
+        fname2 = os.path.join(args.datadir, 'xgc.mesh.bp')
+        with ad2.open(fname2, 'r') as f:
+            rz = f.read('rz')
+
+        _rz = np.array(rz[:,0], dtype=complex)
+        _rz.imag = rz[:,1]
+        
+        global da
+        da = np.zeros((len(zlb), 2), dtype=np.float32) ## list of distance and angle pair
+        for inode in  zlb[:,3]:
+            dist = np.linalg.norm(_rz[inode] - _rz[0])
+            angle = np.angle(_rz[inode] - _rz[0])
+            da[inode,0] = dist
+            da[inode,1] = angle
+        da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
+        log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
+        da = torch.tensor(da, dtype=torch.float).to(device)
+
     _, nx, ny = Z0.shape
     padding = [1,1,1]
     if nx == 39: padding = [1,1,0]
@@ -2310,6 +2344,11 @@ def main():
     if args.model == 'ae':
         log ('AE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, conditional=args.conditional).to(device)
+
+    if args.model == 'cae':
+        setup_da()
+        log ('CAE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, da_conditional=True).to(device)
 
     if args.model == 'ae-vqvae':
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=400).to(device)
@@ -2464,8 +2503,12 @@ def main():
             d_loss.backward()
             optimizer_D.step()
 
-        if args.model == 'ae':
-            recon_batch = model(data)
+        if args.model in ('ae', 'cae'):
+            _da = None
+            if args.model == 'cae':
+                _da = da[lb[:,0,-1],]
+            recon_batch = model(data, _da)
+
             recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
             #l1loss = nn.L1Loss()
             #recon_error = l1loss(recon_batch, data) 
@@ -2530,7 +2573,7 @@ def main():
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
         
-            if args.model in ('vae','ae','ae2d'):
+            if args.model in ('vae','ae','cae','ae2d'):
                 logging.info(f'{i} Loss: {recon_error.item():g}')
 
             if args.model == 'gan':
@@ -2672,7 +2715,7 @@ def main():
                 num_params += v.numel()
             info ('Decoder (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
-        if args.model == 'ae':
+        if args.model in ('ae','cae'):
             num_params = 0
             for k, v in model._decoder.state_dict().items():
                 num_params += v.numel()
