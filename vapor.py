@@ -1243,6 +1243,8 @@ def load_checkpoint(DIR, prefix, model):
         fname = '%s/checkpoint.%d.pytorch'%(_prefix, _istart)
         log ('Checkpoint:', fname)
         _model = torch.load(fname)
+        model.load_state_dict(_model.state_dict())
+        _model = model
         _model.eval()
     except:
         log ("Error:", sys.exc_info()[0])
