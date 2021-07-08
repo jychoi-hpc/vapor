@@ -655,7 +655,11 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
                     x = x.permute(0, 3, 1, 2)
                     valid_originals = x
 
-                vq_encoded = model._encoder(valid_originals)
+                _da = None
+                if modelname == 'cvqvae':
+                    _da = da[zlb[i:i+nbatch,-1],]
+
+                vq_encoded = model._encoder(valid_originals, _da)
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
                 _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
                 if conditional:
@@ -669,7 +673,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
                     # cond = F.pad(cond, p1d, "constant", 0)
                     # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
                     valid_quantize = torch.cat((valid_quantize, cond), dim=1)
-                valid_reconstructions = model._decoder(valid_quantize)
+                valid_reconstructions = model._decoder(valid_quantize, _da)
                 encode_list.append(valid_quantize)
                 #print (vq_encoded.shape, vq_output_eval.shape, valid_quantize.shape, valid_reconstructions.shape)
 
@@ -958,9 +962,16 @@ class Encoder(nn.Module):
                                              num_residual_layers=num_residual_layers,
                                              num_residual_hiddens=num_residual_hiddens)
 
-    def forward(self, inputs):
+    def forward(self, inputs, da=None):
         # (2020/11) Testing with resize
         x = inputs
+        if da is not None:
+            _d = torch.zeros_like(x)
+            _a = torch.zeros_like(x)
+            _d[:,:,:,:] = da[:,0,np.newaxis,np.newaxis,np.newaxis]
+            _a[:,:,:,:] = da[:,1,np.newaxis,np.newaxis,np.newaxis]
+            _da = torch.cat((_d, _a), dim=1)
+            x = torch.cat((x, _d, _a), dim=1)
         # print ('ENC #1:', x.shape)
         # if self._rescale is not None:
         #     x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
@@ -1052,8 +1063,15 @@ class Decoder(nn.Module):
     #3: torch.Size([1, 64, 10, 10])
     #4: torch.Size([1, 64, 20, 20])
     #5: torch.Size([1, 1, 40, 40])
-    def forward(self, inputs):
+    def forward(self, inputs, da=None):
         x = inputs
+        if da is not None:
+            nb, nc, nx, ny = x.shape
+            _d = torch.zeros_like(x)
+            _a = torch.zeros_like(x)
+            _d[:,:,:,:] = da[:,0,np.newaxis,np.newaxis,np.newaxis]
+            _a[:,:,:,:] = da[:,1,np.newaxis,np.newaxis,np.newaxis]
+            x = torch.cat((x, _d[:,-1:,:,:], _a[:,-1:,:,:]), dim=1)
         # print ('DEC #1:', x.shape)
 
         x = self._conv_1(x)
@@ -1079,7 +1097,8 @@ class Decoder(nn.Module):
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, 
-                 input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1], da_conditional=False):
+                 input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1], 
+                 da_conditional=False):
         super(Model, self).__init__()
         
         self._grid = grid
@@ -1091,10 +1110,14 @@ class Model(nn.Module):
         if grid is not None:
             self.width = 32
             self.fc0 = nn.Linear(3, self.width)
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, num_channels)
+            self.fc1 = nn.Linear(self.width, 128)
+            self.fc2 = nn.Linear(128, num_channels)
 
-        self._encoder = Encoder(self.width, num_hiddens,
+        self.ncond = 0
+        if da_conditional:
+            self.ncond = 2
+
+        self._encoder = Encoder(self.width+self.ncond, num_hiddens,
                                 num_residual_layers, 
                                 num_residual_hiddens)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens, 
@@ -1110,7 +1133,7 @@ class Model(nn.Module):
         _embedding_dim = embedding_dim
         if self.conditional:
             _embedding_dim = embedding_dim + 256
-        self._decoder = Decoder(_embedding_dim,
+        self._decoder = Decoder(_embedding_dim+self.ncond,
                                 num_hiddens, 
                                 num_residual_layers, 
                                 num_residual_hiddens, self.width, padding=decoder_padding)
@@ -1158,7 +1181,7 @@ class Model(nn.Module):
             self.feature_extractor = self.feature_extractor.to(device)
             self.feature_extractor.eval()
 
-    def forward(self, x):
+    def forward(self, x, da=None):
         nbatch, nchannel, dim1, dim2 = x.shape
         if self._grid is not None:
             x = torch.cat([x, self._grid.repeat(nbatch,1,1,1)], dim=1)
@@ -1176,7 +1199,7 @@ class Model(nn.Module):
             print ('scale-up', x.shape)
 
         # print ('#0:', x.shape)
-        z = self._encoder(x)
+        z = self._encoder(x, da)
         # print ('#1:', z.shape)
         z = self._pre_vq_conv(z)
         # print ('#2:', z.shape)
@@ -1192,7 +1215,7 @@ class Model(nn.Module):
             # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
             quantized = torch.cat((quantized, cond), dim=1)
 
-        x_recon = self._decoder(quantized)
+        x_recon = self._decoder(quantized, da)
         # print ('#4:', x_recon.shape)
 
         if self.rescale is not None:
@@ -1314,7 +1337,7 @@ CVAE: https://github.com/timbmg/VAE-CVAE-MNIST/blob/master/models.py
 """
 class VAE(nn.Module):
     ## (2021/07) Add conditional for CVAE. We use distance and angle for conditional values
-    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers, shaconv=False, conditional=False):
+    def __init__(self, nc, nx, ny, nh, nz, num_residual_hiddens, num_residual_layers, shaconv=False, da_conditional=False):
         super(VAE, self).__init__()
 
         self.nc = nc
@@ -1327,7 +1350,7 @@ class VAE(nn.Module):
         info ("VAE (nc,nx,ny,nh,nz):", nc, nx, ny, nh, nz)
 
         self.ncond = 0
-        if conditional:
+        if da_conditional:
             self.ncond = 2
         self.fc1 = nn.Linear(self.nx*self.ny + self.ncond, self.nh)
         self.fc21 = nn.Linear(self.nh, self.nz)
@@ -1868,6 +1891,7 @@ def main():
     group.add_argument('--vae', help='vae model', action='store_const', dest='model', const='vae')
     group.add_argument('--cvae', help='cvae model', action='store_const', dest='model', const='cvae')
     group.add_argument('--vqvae', help='vqvae model', action='store_const', dest='model', const='vqvae')
+    group.add_argument('--cvqvae', help='cvqvae model', action='store_const', dest='model', const='cvqvae')
     group.add_argument('--gan', help='gan model', action='store_const', dest='model', const='gan')
     group.add_argument('--fno', help='fno model', action='store_const', dest='model', const='fno')
     group.add_argument('--ae', help='ae model', action='store_const', dest='model', const='ae')
@@ -2304,18 +2328,22 @@ def main():
     padding = [1,1,1]
     if nx == 39: padding = [1,1,0]
     if nx == 45: padding = [1,0,0]
-    if args.model == 'vqvae':
+    if args.model in ('vqvae','cvqvae'):
+        da_conditional = False
+        if args.model == 'cvqvae':
+            setup_da()
+            da_conditional = True
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding).to(device)
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding, da_conditional=da_conditional).to(device)
 
     if args.model == 'vae':
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
 
     if args.model == 'cvae':
         setup_da()
-        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, conditional=True).to(device)
+        model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, da_conditional=True).to(device)
     
     if args.model == 'gan':
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
@@ -2415,8 +2443,12 @@ def main():
 
         optimizer.zero_grad() # clear previous gradients
         
-        if args.model == 'vqvae':
-            vq_loss, data_recon, perplexity, dloss = model(data+ns)
+        if args.model in ('vqvae','cvqvae'):
+            _da = None
+            if args.model == 'cvqvae':
+                _da = da[lb[:,0,-1]]
+
+            vq_loss, data_recon, perplexity, dloss = model(data+ns, _da)
             ## mean squared error: torch.mean((data_recon - data)**2)
             ## relative variance
             # import pdb; pdb.set_trace()
