@@ -1079,7 +1079,7 @@ class Decoder(nn.Module):
 class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, 
-                 input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1]):
+                 input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1], da_conditional=False):
         super(Model, self).__init__()
         
         self._grid = grid
@@ -2314,25 +2314,7 @@ def main():
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
 
     if args.model == 'cvae':
-        fname2 = os.path.join(args.datadir, 'xgc.mesh.bp')
-        with ad2.open(fname2, 'r') as f:
-            rz = f.read('rz')
-
-        _rz = np.array(rz[:,0], dtype=complex)
-        _rz.imag = rz[:,1]
-        
-        global da
-        da = np.zeros((len(zlb), 2), dtype=np.float32) ## list of distance and angle pair
-        for inode in  zlb[:,3]:
-            dist = np.linalg.norm(_rz[inode] - _rz[0])
-            angle = np.angle(_rz[inode] - _rz[0])
-            da[inode,0] = dist
-            da[inode,1] = angle
-        da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
-        log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
-        da = torch.tensor(da, dtype=torch.float).to(device)
-        
-
+        setup_da()
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, conditional=True).to(device)
     
     if args.model == 'gan':
