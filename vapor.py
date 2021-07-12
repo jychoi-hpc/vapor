@@ -41,6 +41,7 @@ from torch.backends import cudnn
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid, save_image
+from torch.utils.tensorboard import SummaryWriter
 
 import xgc4py
 from tqdm import tqdm
@@ -998,7 +999,7 @@ class Encoder(nn.Module):
 
 # %%
 class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, num_channels, padding=[1,1,1]):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, num_channels, padding=[1,1,1], layer_sizes=[]):
         super(Decoder, self).__init__()
         
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
@@ -1024,6 +1025,13 @@ class Decoder(nn.Module):
         self._conv_trans_3 = nn.ConvTranspose2d(in_channels=num_hiddens//2, 
                                                 out_channels=num_channels,
                                                 kernel_size=3, stride=2, padding=1, output_padding=padding[2])
+
+        self.MLP = None
+        if len(layer_sizes)>1:
+            self.MLP = nn.Sequential()
+            for i, (in_size, out_size) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
+                self.MLP.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
+                self.MLP.add_module(name="A{:d}".format(i), module=nn.ReLU())
 
         # # (2021/03)
         # self._block = nn.Sequential(
@@ -1091,6 +1099,11 @@ class Decoder(nn.Module):
         # x = self._block(x)
         # print ('DEC #5:', x.shape)
 
+        if self.MLP is not None:
+            nb, nc, nx, ny = x.shape
+            x = self.MLP(x.view(-1, nc*nx*ny))
+            x = x.view(-1, nc, nx, ny)
+
         return x
 
 # %%
@@ -1098,7 +1111,7 @@ class Model(nn.Module):
     def __init__(self, num_channels, num_hiddens, num_residual_layers, num_residual_hiddens, 
                  num_embeddings, embedding_dim, commitment_cost, decay=0, rescale=None, learndiff=False, 
                  input_shape=None, shaconv=False, grid=None, conditional=False, decoder_padding=[1,1,1], 
-                 da_conditional=False):
+                 da_conditional=False, decoder_layer_sizes=[]):
         super(Model, self).__init__()
         
         self._grid = grid
@@ -1136,7 +1149,8 @@ class Model(nn.Module):
         self._decoder = Decoder(_embedding_dim+self.ncond,
                                 num_hiddens, 
                                 num_residual_layers, 
-                                num_residual_hiddens, self.width, padding=decoder_padding)
+                                num_residual_hiddens, self.width, padding=decoder_padding, 
+                                layer_sizes=decoder_layer_sizes)
 
         """
         Learn diff
@@ -1858,6 +1872,7 @@ def main():
     parser.add_argument('--c_gamma', help='c_gamma', type=float, default=1.0)
     parser.add_argument('--c_delta', help='c_delta', type=float, default=1.0)
     parser.add_argument('--c_zeta', help='c_zeta', type=float, default=1.0)
+    parser.add_argument("--decoder_layer_sizes", type=int, nargs='*', default=[])
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -2001,6 +2016,7 @@ def main():
     alpha, beta, gamma, delta, zeta = args.c_alpha, args.c_beta, args.c_gamma, args.c_delta, args.c_zeta
     #prefix='xgc-%s-batch%d-edim%d-nhidden%d-nchannel%d-nresidual_hidden%d'%(args.exp, args.batch_size, args.embedding_dim, args.num_hiddens, args.num_channels, args.num_residual_hiddens)
     logging.info ('prefix: %s' % prefix)
+    writer = SummaryWriter('runs/%s'%prefix)
 
     # %%
     ## Reading data
@@ -2336,7 +2352,8 @@ def main():
         model = Model(num_channels, num_hiddens, num_residual_layers, num_residual_hiddens,
                     num_embeddings, embedding_dim, 
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
-                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding, da_conditional=da_conditional).to(device)
+                    shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding, da_conditional=da_conditional,
+                    decoder_layer_sizes=args.decoder_layer_sizes).to(device)
 
     if args.model == 'vae':
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
@@ -2470,6 +2487,7 @@ def main():
                 feature_loss = criterion_content(recon_features, data_features)
 
             loss = alpha*recon_error + beta*vq_loss + gamma*physics_error + delta*dloss + zeta*feature_loss
+            writer.add_scalar("Loss/train", loss, i)
             loss.backward()
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
@@ -2605,6 +2623,7 @@ def main():
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
     istart=istart+num_training_updates
+    writer.flush()
 
     # %%
     model.eval()
