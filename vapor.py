@@ -2622,8 +2622,8 @@ def main():
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
+            writer.flush()
     istart=istart+num_training_updates
-    writer.flush()
 
     # %%
     model.eval()
