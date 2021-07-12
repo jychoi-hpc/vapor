@@ -615,7 +615,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
             if modelname in ('vae','cvae'):
                 _da = None
                 if args.model == 'cvae':
-                    _da = da[zlb[i:i+nbatch,-1],]
+                    _da = da[zlb[i:i+nbatch,0],]
 
                 valid_reconstructions, mu, logvar = model(valid_originals, _da)
                 valid_reconstructions = valid_reconstructions.view(-1, model.nc, model.ny, model.nx)
@@ -623,7 +623,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
             elif modelname in ('ae','cae','ae2d'):
                 _da = None
                 if args.model == 'cae':
-                    _da = da[zlb[i:i+nbatch,-1],]
+                    _da = da[zlb[i:i+nbatch,0],]
 
                 valid_encode = model.encode(valid_originals, _da)
                 if args.conditional:
@@ -658,7 +658,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
 
                 _da = None
                 if modelname == 'cvqvae':
-                    _da = da[zlb[i:i+nbatch,-1],]
+                    _da = da[zlb[i:i+nbatch,0],]
 
                 vq_encoded = model._encoder(valid_originals, _da)
                 vq_output_eval = model._pre_vq_conv(vq_encoded)
@@ -1895,6 +1895,7 @@ def main():
     group1.add_argument('--learndiff2', help='learndiff2', action='store_true')
     group1.add_argument('--fieldline', help='fieldline', action='store_true')
     group1.add_argument('--saverecon', help='save recon', action='store_true')
+    group1.add_argument('--polar', help='use polar info', action='store_true')
 
     group2 = parser.add_argument_group('NSTX', 'NSTX processing options')
     ## 159065, 172585, 186106, 199626, 213146, 226667, 240187, 253708, 267228, 280749
@@ -2332,11 +2333,17 @@ def main():
         
         global da
         da = np.zeros((len(zlb), 2), dtype=np.float32) ## list of distance and angle pair
-        for inode in  zlb[:,3]:
-            dist = np.linalg.norm(_rz[inode] - _rz[0])
-            angle = np.angle(_rz[inode] - _rz[0])
-            da[inode,0] = dist
-            da[inode,1] = angle
+        for i, inode in  enumerate(zlb[:,3]):
+            if args.polar: 
+                ## Polar info
+                dist = np.linalg.norm(_rz[inode] - _rz[0])
+                angle = np.angle(_rz[inode] - _rz[0])
+            else:
+                ## Cartesian info
+                dist = _rz[inode][0]
+                angle = _rz[inode][1]
+            da[i,0] = dist
+            da[i,1] = angle
         da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
         log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
         da = torch.tensor(da, dtype=torch.float).to(device)
@@ -2464,7 +2471,7 @@ def main():
         if args.model in ('vqvae','cvqvae'):
             _da = None
             if args.model == 'cvqvae':
-                _da = da[lb[:,0,-1]]
+                _da = da[lb[:,0,0],]
 
             vq_loss, data_recon, perplexity, dloss = model(data+ns, _da)
             ## mean squared error: torch.mean((data_recon - data)**2)
@@ -2499,7 +2506,7 @@ def main():
         if args.model in ('vae','cvae'):
             _da = None
             if args.model == 'cvae':
-                _da = da[lb[:,0,-1],]
+                _da = da[lb[:,0,0],]
             recon_batch, mu, logvar = model(data, _da)
 
             loss = model.loss_function(recon_batch, hr_data, mu, logvar)
@@ -2541,7 +2548,7 @@ def main():
         if args.model in ('ae', 'cae'):
             _da = None
             if args.model == 'cae':
-                _da = da[lb[:,0,-1],]
+                _da = da[lb[:,0,0],]
             recon_batch = model(data, _da)
 
             recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
@@ -2648,7 +2655,7 @@ def main():
 
             _da = None
             if args.model == 'cvqvae':
-                _da = da[valid_labels[:,0,-1],]
+                _da = da[valid_labels[:,0,0],]
 
             vq_encoded = model._encoder(valid_originals, _da)
             vq_output_eval = model._pre_vq_conv(vq_encoded)
@@ -2684,7 +2691,7 @@ def main():
         if args.model in ('vae','cvae'):
             _da = None
             if args.model == 'cvae':
-                _da = da[valid_labels[:,0,-1],]
+                _da = da[valid_labels[:,0,0],]
             valid_reconstructions, mu, logvar = model(valid_originals, _da)
 
             logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
