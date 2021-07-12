@@ -2170,7 +2170,8 @@ def main():
         log ('istart:', istart)
         model = model.to(device)
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+        # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
         myloss = LpLoss(size_average=False)
@@ -2368,7 +2369,7 @@ def main():
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, shaconv=args.shaconv, decoder_padding=padding).to(device)
         discriminator = Discriminator(args.num_channels, nx, ny).to(device)
         adversarial_loss = torch.nn.BCELoss().to(device)
-        optimizer_D = optim.Adam(discriminator.parameters(), lr=learning_rate, amsgrad=False)
+        optimizer_D = optim.AdamW(discriminator.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae':
         log ('AE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
@@ -2387,7 +2388,7 @@ def main():
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
                     shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding).to(device)
 
-        optimizer2 = optim.Adam(model2.parameters(), lr=learning_rate, amsgrad=False)
+        optimizer2 = optim.AdamW(model2.parameters(), lr=learning_rate, amsgrad=False)
 
     if args.model == 'ae2d':
         model = Autoencoder().to(device)
@@ -2409,14 +2410,14 @@ def main():
     model.train()
     log ('istart:', istart)
 
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, amsgrad=False)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, amsgrad=False)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=0.1)
 
     dmodel = None
     if args.learndiff2:
         dim1, dim2 = Zif.shape[-2], Zif.shape[-1]
         dmodel = AE(input_shape=num_channels*dim1*dim2).to(device)
-        doptimizer = optim.Adam(dmodel.parameters(), lr=1e-3)
+        doptimizer = optim.AdamW(dmodel.parameters(), lr=1e-3)
         dcriterion = nn.MSELoss()
 
     if args.vgg:
