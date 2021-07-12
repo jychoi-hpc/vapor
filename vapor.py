@@ -612,7 +612,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
         for i in range(0, len(lx), nbatch):
             valid_originals = torch.tensor(lx[i:i+nbatch]).to(device)
             nbatch, nchannel, dim1, dim2 = valid_originals.shape
-            if modelname in ('vae', 'cvae'):
+            if modelname in ('vae','cvae'):
                 _da = None
                 if args.model == 'cvae':
                     _da = da[zlb[i:i+nbatch,-1],]
@@ -2487,15 +2487,15 @@ def main():
                 feature_loss = criterion_content(recon_features, data_features)
 
             loss = alpha*recon_error + beta*vq_loss + gamma*physics_error + delta*dloss + zeta*feature_loss
-            writer.add_scalar("Loss/train", loss, i)
             loss.backward()
+            writer.add_scalar('Loss/train', loss, i)
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
                 logging.info('iteration %d: gradient averaging' % (i))
                 average_gradients(model)
             optimizer.step()
 
-        if args.model in ('vae', 'cvae'):
+        if args.model in ('vae','cvae'):
             _da = None
             if args.model == 'cvae':
                 _da = da[lb[:,0,-1],]
@@ -2601,13 +2601,13 @@ def main():
         if i % args.log_interval == 0:
             logging.info(f'{i} time: {time.time()-t0:.3f}')
             logging.info(f'{i} Avg: {np.mean(train_res_recon_error[-args.log_interval:]):g} {np.mean(train_res_perplexity[-args.log_interval:]):g} {np.mean(train_res_physics_error[-args.log_interval:]):g}')
-            if args.model == 'vqvae':
+            if args.model in ('vqvae','cvqvae'):
                 logging.info(f'{i} Loss: {recon_error.item():g} {vq_loss.data.item():g} {perplexity.item():g} {physics_error:g} {dloss:g} {feature_loss.item():g} {len(training_loader.dataset)} {len(data)}')
                 
                 if args.learndiff2:
                     logging.info(f'{i} dloss: {dloss.item():g}')
         
-            if args.model in ('vae','ae','cae','ae2d'):
+            if args.model in ('vae','cvae','ae','cae','ae2d'):
                 logging.info(f'{i} Loss: {recon_error.item():g}')
 
             if args.model == 'gan':
@@ -2636,7 +2636,7 @@ def main():
         else:
             hr_originals = valid_originals
 
-        if args.model == 'vqvae':
+        if args.model in ('vqvae','cvqvae'):
             if model._grid is not None:
                 x = valid_originals
                 x = torch.cat([x, model._grid.repeat(nbatch,1,1,1)], dim=1)
@@ -2644,7 +2644,12 @@ def main():
                 x = model.fc0(x)
                 x = x.permute(0, 3, 1, 2)
                 valid_originals = x
-            vq_encoded = model._encoder(valid_originals)
+
+            _da = None
+            if args.model == 'cvqvae':
+                _da = da[valid_labels[:,0,-1],]
+
+            vq_encoded = model._encoder(valid_originals, _da)
             vq_output_eval = model._pre_vq_conv(vq_encoded)
             _, valid_quantize, _, _ = model._vq_vae(vq_output_eval)
             if args.conditional:
@@ -2658,7 +2663,7 @@ def main():
                 # cond = F.pad(cond, p1d, "constant", 0)
                 # cond = torch.reshape(cond, (nbatch, 4, 5, 5))
                 valid_quantize = torch.cat((valid_quantize, cond), dim=1)
-            valid_reconstructions = model._decoder(valid_quantize)
+            valid_reconstructions = model._decoder(valid_quantize, _da)
             if model._grid is not None:
                 x = valid_reconstructions
                 x = x.permute(0, 2, 3, 1)
@@ -2675,8 +2680,11 @@ def main():
             logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/vq_encoded.detach().cpu().numpy().size))
             logging.info ('compression ratio: %.2fx'%(valid_originals.cpu().numpy().size/valid_quantize.detach().cpu().numpy().size))
 
-        if args.model == 'vae':
-            valid_reconstructions, mu, logvar = model(valid_originals)
+        if args.model in ('vae','cvae'):
+            _da = None
+            if args.model == 'cvae':
+                _da = da[valid_labels[:,0,-1],]
+            valid_reconstructions, mu, logvar = model(valid_originals, _da)
 
             logging.info ('Original: %s' % (valid_originals.cpu().numpy().shape,))
             # logging.info ('Encoded: %s' % (vq_encoded.detach().cpu().numpy().shape,))
@@ -2744,7 +2752,7 @@ def main():
         info ('%50s\t%20s\t%10d'%('Total', '', num_params))
         info ('All (total, MB, ratio): %d %g %g'%(num_params, num_params*4/1024/1024, num_params/nx/ny))
 
-        if args.model == 'vqvae':
+        if args.model in ('vqvae','cvqvae'):
             num_params = 0
             for k, v in model._decoder.state_dict().items():
                 num_params += v.numel()
