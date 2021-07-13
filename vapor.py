@@ -2344,8 +2344,8 @@ def main():
                 angle = rz[inode, 1]
             da[i,0] = dist
             da[i,1] = angle
-        da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
-        log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
+        #da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
+        #log ('Condition information (distance and angle) normalized:', np.min(da, axis=0), np.max(da, axis=0))
         da = torch.tensor(da, dtype=torch.float).to(device)
 
     _, nx, ny = Z0.shape
