@@ -2340,8 +2340,8 @@ def main():
                 angle = np.angle(_rz[inode] - _rz[0])
             else:
                 ## Cartesian info
-                dist = _rz[inode][0]
-                angle = _rz[inode][1]
+                dist = rz[inode, 0]
+                angle = rz[inode, 1]
             da[i,0] = dist
             da[i,1] = angle
         da = (da - np.min(da, axis=0))/(np.max(da, axis=0) - np.min(da, axis=0))
