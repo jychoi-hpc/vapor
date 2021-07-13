@@ -2496,7 +2496,6 @@ def main():
 
             loss = alpha*recon_error + beta*vq_loss + gamma*physics_error + delta*dloss + zeta*feature_loss
             loss.backward()
-            writer.add_scalar('Loss/train', loss, i)
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
                 logging.info('iteration %d: gradient averaging' % (i))
@@ -2589,6 +2588,9 @@ def main():
             loss2.backward()
             optimizer2.step()
 
+        writer.add_scalar('Loss/train', loss, i)
+        writer.add_scalar('Recon_error/train', recon_error, i)
+        writer.add_scalar('Perplexity/train', perplexity, i)
         train_res_recon_error.append(recon_error.item())
         train_res_perplexity.append(perplexity.item())
         train_res_physics_error.append(physics_error.item())
