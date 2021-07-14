@@ -1430,13 +1430,31 @@ class VAE(nn.Module):
 """
 Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
 """
+class ResNet_block(torch.nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+
+    def forward(self, inputs):
+        return self.module(inputs) + inputs
+
+# net = torch.nn.Sequential(
+#     torch.nn.Linear(5, 100),
+#     # 32 filters in and out, no max pooling so the shapes can be added
+#     ResNet_block(
+#         torch.nn.Sequential(
+#             torch.nn.Linear(100, 100),
+#             torch.nn.ReLU(),
+#         )
+#     ),
 class AE(nn.Module):
-    def __init__(self, input_dim, embedding_dim, conditional=False, da_conditional=False):
+    def __init__(self, input_dim, embedding_dim, encoder_layer_sizes=[], decoder_layer_sizes=[], conditional=False, da_conditional=False):
         super().__init__()
 
         self.conditional = conditional
 
         _embedding_dim = embedding_dim
+
         if self.conditional:
             # modelfile = 'xgc-vgg19-ch1-N1000.torch'
             # self.feature_extractor = XGCFeatureExtractor(modelfile)
@@ -1455,20 +1473,86 @@ class AE(nn.Module):
             self.ncond = 2
 
         ## (2021/03) 400 = 16x5x5 to match with VQ-VAE
-        self._encoder = nn.Sequential(
-            nn.Linear(input_dim + self.ncond, embedding_dim),
-            nn.LeakyReLU(True),
-            nn.Linear(embedding_dim, embedding_dim),
-            nn.LeakyReLU(True),
-            )
+        # self._encoder = nn.Sequential(
+        #     nn.Linear(input_dim + self.ncond, embedding_dim),
+        #     nn.LeakyReLU(True),
+        #     nn.Linear(embedding_dim, embedding_dim),
+        #     nn.LeakyReLU(True),
+        #     )
 
-        self._decoder = nn.Sequential(
-            nn.Linear(_embedding_dim + self.ncond, embedding_dim),
-            nn.LeakyReLU(True),
-            nn.Linear(embedding_dim, input_dim),
-            nn.LeakyReLU(True),
-            )
-    
+        if len(encoder_layer_sizes) == 0:
+            encoder_layer_sizes = [input_dim, embedding_dim]
+        assert input_dim == encoder_layer_sizes[0]
+        assert _embedding_dim == encoder_layer_sizes[-1]
+
+        self._encoder = nn.Sequential()
+        for i, (in_size, out_size) in enumerate(zip(encoder_layer_sizes[:-1], encoder_layer_sizes[1:])):
+            if i == 0:
+                in_size += self.ncond
+
+            if (in_size < 0) and (out_size < 0):
+                in_size, out_size = abs(in_size), abs(out_size)
+                assert in_size == out_size
+
+                m = ResNet_block(torch.nn.Sequential(
+                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.ReLU(),
+                        ))
+                self._encoder.add_module(name="R{:d}".format(i), module=m)
+            else:
+                in_size, out_size = abs(in_size), abs(out_size)
+                self._encoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
+                self._encoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+
+                # m1 = ResNet_block(torch.nn.Sequential(
+                #         torch.nn.Linear(in_size, 100),
+                #         torch.nn.ReLU(),
+                #     )
+                # )
+
+        # nn.Linear(_embedding_dim + self.ncond, embedding_dim),
+        # nn.LeakyReLU(True),
+        # nn.Linear(embedding_dim, input_dim),
+        # nn.LeakyReLU(True),
+
+        if len(decoder_layer_sizes) == 0:
+            decoder_layer_sizes = [embedding_dim, input_dim]
+        assert _embedding_dim == decoder_layer_sizes[0]
+        assert input_dim == decoder_layer_sizes[-1]
+
+        self._decoder = nn.Sequential()
+        for i, (in_size, out_size) in enumerate(zip(decoder_layer_sizes[:-1], decoder_layer_sizes[1:])):
+            if i == 0:
+                in_size += self.ncond
+
+            if (in_size < 0) and (out_size < 0):
+                in_size, out_size = abs(in_size), abs(out_size)
+                assert in_size == out_size
+
+                m = ResNet_block(torch.nn.Sequential(
+                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.ReLU(),
+                        ))
+                self._decoder.add_module(name="R{:d}".format(i), module=m)
+            else:
+                in_size, out_size = abs(in_size), abs(out_size)
+                self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
+                self._decoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+
+            self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
+            self._decoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+            # module = ResNet_block(
+            #     torch.nn.Sequential(
+            #         torch.nn.Linear(in_size, out_size),
+            #         torch.nn.ReLU(),
+            #         )
+            #     )
+            # self._decoder.add_module(name="L{:d}".format(i), module=module)            
+                
     def encode(self, x, da=None):
         self.nbatch, self.nc, self.nx, self.ny = x.shape
         x = x.view(self.nbatch, -1)
@@ -1865,7 +1949,7 @@ def main():
     parser.add_argument('--vgg', help='vgg', action='store_true')
     parser.add_argument('--conditional', help='conditional', action='store_true')
     parser.add_argument('--hr', help='high resolution', action='store_true')
-    parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=[20_000,30_000,40_000])
+    parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=[20_000,30_000,40_000,50_000])
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -1873,6 +1957,7 @@ def main():
     parser.add_argument('--c_delta', help='c_delta', type=float, default=1.0)
     parser.add_argument('--c_zeta', help='c_zeta', type=float, default=1.0)
     parser.add_argument("--decoder_layer_sizes", type=int, nargs='*', default=[])
+    parser.add_argument("--encoder_layer_sizes", type=int, nargs='*', default=[])
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--xgc', help='XGC dataset', action='store_const', dest='dataset', const='xgc')
@@ -2380,12 +2465,16 @@ def main():
 
     if args.model == 'ae':
         log ('AE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
-        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, conditional=args.conditional).to(device)
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, 
+            encoder_layer_sizes=args.encoder_layer_sizes, decoder_layer_sizes=args.decoder_layer_sizes, 
+            conditional=args.conditional).to(device)
 
     if args.model == 'cae':
         setup_da()
         log ('CAE model: input_dim: %d, embedding_dim= %d'%(num_channels*ny*nx, args.embedding_dim))
-        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, da_conditional=True).to(device)
+        model = AE(input_dim=num_channels*ny*nx, embedding_dim=args.embedding_dim, 
+            encoder_layer_sizes=args.encoder_layer_sizes, decoder_layer_sizes=args.decoder_layer_sizes, 
+            da_conditional=True).to(device)
 
     if args.model == 'ae-vqvae':
         model = AE(input_dim=num_channels*ny*nx, embedding_dim=400).to(device)
