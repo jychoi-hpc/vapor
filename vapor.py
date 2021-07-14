@@ -1909,7 +1909,7 @@ def main():
     parser.add_argument('--nompi', help='nompi', action='store_true')
     parser.add_argument('--seed', help='seed (default: %(default)s)', type=int)
     parser.add_argument('--nworkers', help='nworkers (default: %(default)s)', type=int)
-    parser.add_argument('--log', help='log', action='store_true')
+    parser.add_argument('--log', help='log', action='store_true', default=True)
     parser.add_argument('--noise', help='noise value in (0,1)', type=float, default=None)
     parser.add_argument('--resampling', help='resampling', action='store_true')
     parser.add_argument('--resampling_interval', help='resampling_interval', type=int, default=None)
