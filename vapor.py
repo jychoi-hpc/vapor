@@ -682,7 +682,7 @@ def recon(model, Xif, zmin, zmax, zlb, num_channels=16, dmodel=None, modelname='
                     x = valid_reconstructions
                     x = x.permute(0, 2, 3, 1)
                     x = model.fc1(x)
-                    x = F.relu(x)
+                    x = F.leaky_relu(x)
                     x = model.fc2(x)
                     x = x.permute(0, 3, 1, 2)
                     valid_reconstructions = x
@@ -869,11 +869,11 @@ class Residual(nn.Module):
     def __init__(self, in_channels, num_hiddens, num_residual_hiddens):
         super(Residual, self).__init__()
         self._block = nn.Sequential(
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.Conv2d(in_channels=in_channels,
                       out_channels=num_residual_hiddens,
                       kernel_size=3, stride=1, padding=1, bias=False),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.Conv2d(in_channels=num_residual_hiddens,
                       out_channels=num_hiddens,
                       kernel_size=1, stride=1, bias=False)
@@ -893,7 +893,7 @@ class ResidualStack(nn.Module):
     def forward(self, x):
         for i in range(self._num_residual_layers):
             x = self._layers[i](x)
-        return F.relu(x)
+        return F.leaky_relu(x)
 
 # %%
 class ConvBlock(nn.Module):
@@ -901,9 +901,9 @@ class ConvBlock(nn.Module):
         super(ConvBlock, self).__init__()
         self._block = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
         )
 
@@ -916,7 +916,7 @@ class ConvTBlock(nn.Module):
         self._block = nn.Sequential(
             nn.ConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=False),
             #nn.BatchNorm2d(out_channels),
-            nn.ReLU(True)
+            nn.LeakyReLU(True)
         )
 
     def forward(self, x):
@@ -977,18 +977,18 @@ class Encoder(nn.Module):
         # if self._rescale is not None:
         #     x = F.interpolate(inputs, size=x.shape[-1]*self._rescale)
         #     x = self._conv_0(x)
-        #     x = F.relu(x)
+        #     x = F.leaky_relu(x)
 
         x = self._conv_1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # print ('ENC #2:', x.shape)
         
         x = self._conv_2(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # print ('ENC #3:', x.shape)
         
         x = self._conv_3(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self._block(x)
         # print ('ENC #4:', x.shape)
 
@@ -1031,7 +1031,7 @@ class Decoder(nn.Module):
             self.MLP = nn.Sequential()
             for i, (in_size, out_size) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
                 self.MLP.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-                self.MLP.add_module(name="A{:d}".format(i), module=nn.ReLU())
+                self.MLP.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
 
         # # (2021/03)
         # self._block = nn.Sequential(
@@ -1087,11 +1087,11 @@ class Decoder(nn.Module):
         # print ('DEC #2:', x.shape)
         
         x = self._conv_trans_1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # print ('DEC #3:', x.shape)
         
         x = self._conv_trans_2(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # print ('DEC #4:', x.shape)
         
         x = self._conv_trans_3(x)
@@ -1240,7 +1240,7 @@ class Model(nn.Module):
             x = x_recon
             x = x.permute(0, 2, 3, 1)
             x = self.fc1(x)
-            x = F.relu(x)
+            x = F.leaky_relu(x)
             x = self.fc2(x)
             x = x.permute(0, 3, 1, 2)
             x_recon = x.contiguous()
@@ -1323,9 +1323,9 @@ class ResidualLinear(nn.Module):
     def __init__(self, in_channels, num_hiddens, num_residual_hiddens):
         super(ResidualLinear, self).__init__()
         self._block = nn.Sequential(
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.Linear(in_channels, num_residual_hiddens),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.Linear(num_residual_hiddens, num_hiddens)
         )
     
@@ -1342,7 +1342,7 @@ class ResidualLinearStack(nn.Module):
     def forward(self, x):
         for i in range(self._num_residual_layers):
             x = self._layers[i](x)
-        return F.relu(x)
+        return F.leaky_relu(x)
 
 """
 Credit: 
@@ -1384,7 +1384,7 @@ class VAE(nn.Module):
             assert da is not None
             x = torch.cat((x, da), dim=-1)
 
-        x = F.relu(self.fc1(x))
+        x = F.leaky_relu(self.fc1(x))
         x = self.rs(x)
         return self.fc21(x), self.fc22(x)
 
@@ -1398,10 +1398,10 @@ class VAE(nn.Module):
             assert da is not None
             z = torch.cat((z, da), dim=-1)
 
-        x = F.relu(self.fc3(z))
+        x = F.leaky_relu(self.fc3(z))
         x = self.rs(x)
         x = torch.sigmoid(self.fc4(x))
-        # x = F.relu(self.fc4(x))
+        # x = F.leaky_relu(self.fc4(x))
         # x = self.fc4(x)
         return x
 
@@ -1438,15 +1438,6 @@ class ResNet_block(torch.nn.Module):
     def forward(self, inputs):
         return self.module(inputs) + inputs
 
-# net = torch.nn.Sequential(
-#     torch.nn.Linear(5, 100),
-#     # 32 filters in and out, no max pooling so the shapes can be added
-#     ResNet_block(
-#         torch.nn.Sequential(
-#             torch.nn.Linear(100, 100),
-#             torch.nn.ReLU(),
-#         )
-#     ),
 class AE(nn.Module):
     def __init__(self, input_dim, embedding_dim, encoder_layer_sizes=[], decoder_layer_sizes=[], conditional=False, da_conditional=False):
         super().__init__()
@@ -1506,12 +1497,6 @@ class AE(nn.Module):
                 self._encoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
                 self._encoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
 
-                # m1 = ResNet_block(torch.nn.Sequential(
-                #         torch.nn.Linear(in_size, 100),
-                #         torch.nn.ReLU(),
-                #     )
-                # )
-
         # nn.Linear(_embedding_dim + self.ncond, embedding_dim),
         # nn.LeakyReLU(True),
         # nn.Linear(embedding_dim, input_dim),
@@ -1542,16 +1527,6 @@ class AE(nn.Module):
                 in_size, out_size = abs(in_size), abs(out_size)
                 self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
                 self._decoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
-
-            self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-            self._decoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
-            # module = ResNet_block(
-            #     torch.nn.Sequential(
-            #         torch.nn.Linear(in_size, out_size),
-            #         torch.nn.ReLU(),
-            #         )
-            #     )
-            # self._decoder.add_module(name="L{:d}".format(i), module=module)            
                 
     def encode(self, x, da=None):
         self.nbatch, self.nc, self.nx, self.ny = x.shape
@@ -1635,9 +1610,9 @@ class Autoencoder(nn.Module):
             nn.Linear(400, 400),
             nn.LeakyReLU(True),
             #nn.Conv2d(3, 6, kernel_size=5),
-            #nn.ReLU(True),
+            #nn.LeakyReLU(True),
             #nn.Conv2d(6,16,kernel_size=5),
-            #nn.ReLU(True)
+            #nn.LeakyReLU(True)
             )
 
         self.decoder = nn.Sequential(             
@@ -1647,9 +1622,9 @@ class Autoencoder(nn.Module):
             nn.ConvTranspose2d(1, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.LeakyReLU(True),
             #nn.ConvTranspose2d(16,6,kernel_size=5),
-            #nn.ReLU(True),
+            #nn.LeakyReLU(True),
             #nn.ConvTranspose2d(6,3,kernel_size=5),
-            #nn.ReLU(True)
+            #nn.LeakyReLU(True)
             )
 
     def forward(self,x):
@@ -1773,7 +1748,7 @@ class SpectralStack(nn.Module):
         x1 = self.conv0(x)
         x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
         x = self.bn0(x1 + x2)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         return x
 
 class SimpleBlock2d(nn.Module):
@@ -1831,19 +1806,19 @@ class SimpleBlock2d(nn.Module):
         # x1 = self.conv0(x)
         # x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
         # x = self.bn0(x1 + x2)
-        # x = F.relu(x)
+        # x = F.leaky_relu(x)
         
         # # print ('#2:', x.shape)
         # x1 = self.conv1(x)
         # x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
         # x = self.bn1(x1 + x2)
-        # x = F.relu(x)
+        # x = F.leaky_relu(x)
         
         # # print ('#3:', x.shape)
         # x1 = self.conv2(x)
         # x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
         # x = self.bn2(x1 + x2)
-        # x = F.relu(x)
+        # x = F.leaky_relu(x)
 
         for i in range(len(self._layers)):
             x = self._layers[i](x)
@@ -1859,7 +1834,7 @@ class SimpleBlock2d(nn.Module):
         
         # print ('#6:', x.shape)
         x = self.fc1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         
         # print ('#7:', x.shape)
         x = self.fc2(x)
@@ -1949,7 +1924,8 @@ def main():
     parser.add_argument('--vgg', help='vgg', action='store_true')
     parser.add_argument('--conditional', help='conditional', action='store_true')
     parser.add_argument('--hr', help='high resolution', action='store_true')
-    parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=[20_000,30_000,40_000,50_000])
+    parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=None)
+    parser.add_argument('--stepsize', help='scheduler step size', type=int, default=50_000)
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -2507,7 +2483,10 @@ def main():
     log ('istart:', istart)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, amsgrad=False)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=0.1)
+    if args.milestones is not None:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=0.1)
+    else:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.stepsize, gamma=0.1)
 
     dmodel = None
     if args.learndiff2:
@@ -2767,7 +2746,7 @@ def main():
                 x = valid_reconstructions
                 x = x.permute(0, 2, 3, 1)
                 x = model.fc1(x)
-                x = F.relu(x)
+                x = F.leaky_relu(x)
                 x = model.fc2(x)
                 x = x.permute(0, 3, 1, 2)
                 valid_reconstructions = x
