@@ -1496,15 +1496,15 @@ class AE(nn.Module):
 
                 m = ResNet_block(torch.nn.Sequential(
                         torch.nn.Linear(in_size, in_size),
-                        torch.nn.ReLU(),
+                        torch.nn.LeakyReLU(),
                         torch.nn.Linear(in_size, in_size),
-                        torch.nn.ReLU(),
+                        torch.nn.LeakyReLU(),
                         ))
                 self._encoder.add_module(name="R{:d}".format(i), module=m)
             else:
                 in_size, out_size = abs(in_size), abs(out_size)
                 self._encoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-                self._encoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+                self._encoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
 
                 # m1 = ResNet_block(torch.nn.Sequential(
                 #         torch.nn.Linear(in_size, 100),
@@ -1533,18 +1533,18 @@ class AE(nn.Module):
 
                 m = ResNet_block(torch.nn.Sequential(
                         torch.nn.Linear(in_size, in_size),
-                        torch.nn.ReLU(),
+                        torch.nn.LeakyReLU(),
                         torch.nn.Linear(in_size, in_size),
-                        torch.nn.ReLU(),
+                        torch.nn.LeakyReLU(),
                         ))
                 self._decoder.add_module(name="R{:d}".format(i), module=m)
             else:
                 in_size, out_size = abs(in_size), abs(out_size)
                 self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-                self._decoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+                self._decoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
 
             self._decoder.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-            self._decoder.add_module(name="A{:d}".format(i), module=nn.ReLU())
+            self._decoder.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
             # module = ResNet_block(
             #     torch.nn.Sequential(
             #         torch.nn.Linear(in_size, out_size),
