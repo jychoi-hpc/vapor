@@ -1481,7 +1481,7 @@ class AE(nn.Module):
         #     )
 
         if len(encoder_layer_sizes) == 0:
-            encoder_layer_sizes = [input_dim, embedding_dim]
+            encoder_layer_sizes = [input_dim, (input_dim+embedding_dim)//2, embedding_dim]
         assert input_dim == encoder_layer_sizes[0]
         assert _embedding_dim == encoder_layer_sizes[-1]
 
@@ -1518,7 +1518,7 @@ class AE(nn.Module):
         # nn.LeakyReLU(True),
 
         if len(decoder_layer_sizes) == 0:
-            decoder_layer_sizes = [embedding_dim, input_dim]
+            decoder_layer_sizes = [embedding_dim, (input_dim+embedding_dim)//2, input_dim]
         assert _embedding_dim == decoder_layer_sizes[0]
         assert input_dim == decoder_layer_sizes[-1]
 
