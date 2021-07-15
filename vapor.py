@@ -2578,6 +2578,7 @@ def main():
 
             loss = model.loss_function(recon_batch, hr_data, mu, logvar)
             recon_error = F.mse_loss(recon_batch, hr_data.view(-1, nx*ny)) / hr_data_variance
+            vq_loss = torch.tensor(0)
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss.backward()
@@ -2621,6 +2622,7 @@ def main():
             recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
             #l1loss = nn.L1Loss()
             #recon_error = l1loss(recon_batch, data) 
+            vq_loss = torch.tensor(0)
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss = recon_error
@@ -2630,6 +2632,7 @@ def main():
         if args.model == 'ae2d':
             recon_batch = model(data)
             recon_error = F.mse_loss(recon_batch, hr_data) / hr_data_variance
+            vq_loss = torch.tensor(0)
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss = recon_error
@@ -2641,6 +2644,7 @@ def main():
             recon_error = F.mse_loss(recon_batch, hr_data.detach()) / hr_data_variance
             #l1loss = nn.L1Loss()
             #recon_error = l1loss(recon_batch, data) 
+            vq_loss = torch.tensor(0)
             perplexity = torch.tensor(0)
             physics_error = torch.tensor(0.0)
             loss = recon_error
@@ -2657,6 +2661,7 @@ def main():
             optimizer2.step()
 
         writer.add_scalar('Loss/train', loss, i)
+        writer.add_scalar('VQLoss/train', vq_loss, i)
         writer.add_scalar('Recon_error/train', recon_error, i)
         writer.add_scalar('Perplexity/train', perplexity, i)
         train_res_recon_error.append(recon_error.item())
