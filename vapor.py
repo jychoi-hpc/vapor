@@ -2519,8 +2519,8 @@ def main():
     logging.info ('Training: %d' % num_training_updates)
     model.train()
     ns = 0.0 
-    t0 = time.time()
     for i in xrange(istart, istart+num_training_updates):
+        t0 = time.time()
         (data, lb, hr_data) = next(iter(training_loader))
         # print ("Training:", lb)
         data = data.to(device)
@@ -2670,6 +2670,7 @@ def main():
         scheduler.step()
 
         if args.resampling and (i % resampling_interval == 0):
+            t1 = time.time()
             err_list, _ = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, conditional=args.conditional)
             err = np.array([max(err_list[i: i+num_channels]) for i in xrange(0, len(err_list), num_channels)])
             idx = np.random.choice(range(len(lx)), len(lx), p=err/sum(err))
@@ -2680,6 +2681,7 @@ def main():
             training_data = torch.utils.data.TensorDataset(torch.tensor(lxx), torch.tensor(lyy), torch.tensor(lhh))
             training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, pin_memory=True)
             total_trained[idx] += 1
+            logging.info(f'{i} Resampling time: {time.time()-t1:.3f}')
 
         if i % args.log_interval == 0:
             logging.info(f'{i} time: {time.time()-t0:.3f}')
