@@ -1030,8 +1030,21 @@ class Decoder(nn.Module):
         if len(layer_sizes)>1:
             self.MLP = nn.Sequential()
             for i, (in_size, out_size) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
-                self.MLP.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
-                self.MLP.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
+                if (in_size < 0) and (out_size < 0):
+                    in_size, out_size = abs(in_size), abs(out_size)
+                    assert in_size == out_size
+
+                    m = ResNet_block(torch.nn.Sequential(
+                            torch.nn.Linear(in_size, in_size),
+                            torch.nn.LeakyReLU(),
+                            torch.nn.Linear(in_size, in_size)),
+                            torch.nn.LeakyReLU(),
+                            )
+                    self.MLP.add_module(name="R{:d}".format(i), module=m)
+                else:
+                    in_size, out_size = abs(in_size), abs(out_size)
+                    self.MLP.add_module(name="L{:d}".format(i), module=nn.Linear(in_size, out_size))
+                    self.MLP.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
 
         # # (2021/03)
         # self._block = nn.Sequential(
@@ -1429,14 +1442,16 @@ class VAE(nn.Module):
 # %%
 """
 Credit: https://medium.com/pytorch/implementing-an-autoencoder-in-pytorch-19baa22647d1
+Credit: https://d2l.ai/chapter_convolutional-modern/resnet.html
 """
 class ResNet_block(torch.nn.Module):
-    def __init__(self, module):
+    def __init__(self, module, act):
         super().__init__()
         self.module = module
+        self.act = act
 
     def forward(self, inputs):
-        return self.module(inputs) + inputs
+        return self.act(self.module(inputs) + inputs)
 
 class AE(nn.Module):
     def __init__(self, input_dim, embedding_dim, encoder_layer_sizes=[], decoder_layer_sizes=[], conditional=False, da_conditional=False):
@@ -1488,9 +1503,9 @@ class AE(nn.Module):
                 m = ResNet_block(torch.nn.Sequential(
                         torch.nn.Linear(in_size, in_size),
                         torch.nn.LeakyReLU(),
-                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.Linear(in_size, in_size)),
                         torch.nn.LeakyReLU(),
-                        ))
+                        )
                 self._encoder.add_module(name="R{:d}".format(i), module=m)
             else:
                 in_size, out_size = abs(in_size), abs(out_size)
@@ -1519,9 +1534,9 @@ class AE(nn.Module):
                 m = ResNet_block(torch.nn.Sequential(
                         torch.nn.Linear(in_size, in_size),
                         torch.nn.LeakyReLU(),
-                        torch.nn.Linear(in_size, in_size),
+                        torch.nn.Linear(in_size, in_size)),
                         torch.nn.LeakyReLU(),
-                        ))
+                        )
                 self._decoder.add_module(name="R{:d}".format(i), module=m)
             else:
                 in_size, out_size = abs(in_size), abs(out_size)
