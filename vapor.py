@@ -1957,6 +1957,7 @@ def main():
     parser.add_argument('--hr', help='high resolution', action='store_true')
     parser.add_argument('--milestones', help='scheduler milestones', nargs='*', type=int, default=None)
     parser.add_argument('--stepsize', help='scheduler step size', type=int, default=50_000)
+    parser.add_argument('--tb', help='tensorboard', action='store_true')
 
     parser.add_argument('--c_alpha', help='c_alpha', type=float, default=1.0)
     parser.add_argument('--c_beta', help='c_beta', type=float, default=1.0)
@@ -2740,6 +2741,15 @@ def main():
                 fname='%s/%s/img-%d.jpg'%(DIR,prefix,i)
             rmse_list, abserr_list = estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname=args.model, fname=fname, conditional=args.conditional)
             logging.info(f'{i} Error: {np.max(rmse_list):g} {np.max(abserr_list):g} Next LR: {optimizer.param_groups[0]["lr"]:g}')
+
+            if args.tb:
+                img_grid = torchvision.utils.make_grid(data)
+                writer.add_image('data', img_grid, i)
+                if args.hr:
+                    img_grid = torchvision.utils.make_grid(hr_data)
+                    writer.add_image('hr_data', img_grid, i)
+                img_grid = torchvision.utils.make_grid(data_recon)
+                writer.add_image('recon_data', img_grid, i)
 
         if (i % args.checkpoint_interval == 0) and (rank == 0):
             save_checkpoint(DIR, prefix, model, train_res_recon_error, i, dmodel=dmodel)
