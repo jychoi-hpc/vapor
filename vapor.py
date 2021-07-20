@@ -2150,6 +2150,11 @@ def main():
                 _out = read_f0(istep, expdir=args.datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
                             randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
                 f0_data_list.append(_out)
+                if args.hr:
+                    assert(args.hr_datadir is not None)
+                    _out2 = read_f0(istep, expdir=args.hr_datadir, iphi=args.iphi, inode=args.inode, nnodes=args.nnodes, \
+                            randomread=args.randomread, nchunk=num_channels, fieldline=args.fieldline)
+                    hr_data_list.append(_out2)
 
         lst = list(zip(*f0_data_list))
 
