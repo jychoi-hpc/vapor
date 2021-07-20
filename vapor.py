@@ -30,6 +30,7 @@ import random
 
 # %%
 import torch
+import torchvision
 #torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 import torch.nn.functional as F
@@ -749,6 +750,21 @@ def estimate_error(model, Xif, Zif, zmin, zmax, zlb, num_channels, modelname, fn
     # max_abs_list = max_abs_list/sum(max_abs_list)
 
     return (rmse_list, abs_list)
+
+# %%
+# Credit: https://www.kaggle.com/sironghuang/understanding-pytorch-hooks
+# A simple hook class that returns the input and output of a layer during forward/backward pass
+class Hook():
+    def __init__(self, module, backward=False):
+        if backward==False:
+            self.hook = module.register_forward_hook(self.hook_fn)
+        else:
+            self.hook = module.register_backward_hook(self.hook_fn)
+    def hook_fn(self, module, input, output):
+        self.input = input
+        self.output = output
+    def close(self):
+        self.hook.remove()
 
 # %%
 class VectorQuantizer(nn.Module):
@@ -2438,6 +2454,8 @@ def main():
                     commitment_cost, decay, rescale=args.rescale, learndiff=args.learndiff, 
                     shaconv=args.shaconv, grid=grid, conditional=args.conditional, decoder_padding=padding, da_conditional=da_conditional,
                     decoder_layer_sizes=args.decoder_layer_sizes).to(device)
+        # hook = Hook(model._decoder.MLP.R0.module[2])
+        # hook_list = list()
 
     if args.model == 'vae':
         model = VAE(args.num_channels, nx, ny, nx*ny//4, nx*ny//4//4, num_residual_hiddens, num_residual_layers, shaconv=args.shaconv).to(device)
@@ -2579,6 +2597,9 @@ def main():
 
             loss = alpha*recon_error + beta*vq_loss + gamma*physics_error + delta*dloss + zeta*feature_loss
             loss.backward()
+            # hook_list.append(hook.output.detach().numpy())
+            # print('---'*17)
+
             if (args.average_interval is not None) and (i%args.average_interval == 0):
                 ## Gradient averaging
                 logging.info('iteration %d: gradient averaging' % (i))
@@ -2726,6 +2747,7 @@ def main():
     istart=istart+num_training_updates
 
     # %%
+    # import pdb; pdb.set_trace()
     model.eval()
     with torch.no_grad():
         (valid_originals, valid_labels, hr_originals) = next(iter(validation_loader))
