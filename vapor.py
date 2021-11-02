@@ -56,6 +56,8 @@ from skimage.transform import resize
 
 from models import *
 
+from torchvision.models.resnet import conv3x3, conv1x1, BasicBlock
+
 ## Global variables
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 xgcexp = None
@@ -393,7 +395,7 @@ def read_f0_nodes(istep, inodes, expdir=None, iphi=None, nextnode_arr=None, resc
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
 # %%
-def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16, fieldline=False):
+def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, randomread=0.0, nchunk=16, fieldline=False, normalize=False):
     """
     Read XGC f0 data
     """
@@ -533,7 +535,11 @@ def read_f0(istep, expdir=None, iphi=None, inode=0, nnodes=None, average=False, 
     zsig = np.std(Z0, axis=(1,2))
     zmin = np.min(Z0, axis=(1,2))
     zmax = np.max(Z0, axis=(1,2))
-    Zif = (Z0 - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+    logging.info (f"Reading: normalize {normalize}")
+    if normalize:
+        Zif = (Z0 - zmin[:,np.newaxis,np.newaxis])/(zmax-zmin)[:,np.newaxis,np.newaxis]
+    else:
+        Zif = Z0
 
     return (Z0, Zif, zmu, zsig, zmin, zmax, zlb)
 
@@ -765,6 +771,9 @@ class Hook():
         self.output = output
     def close(self):
         self.hook.remove()
+
+
+
 
 # %%
 class VectorQuantizer(nn.Module):
@@ -2526,6 +2535,7 @@ def main():
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestones, gamma=0.1)
     else:
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.stepsize, gamma=0.1)
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=1000)
 
     dmodel = None
     if args.learndiff2:

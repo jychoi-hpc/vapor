@@ -72,7 +72,7 @@ def xdowork(Z, Zbar, trimesh, r, z, fsum, inode, title, outdir, seq):
     #plt.triplot(trimesh, alpha=0.3, c='0.3')
     plt.scatter(r[inode], z[inode], c='r', marker='x', s=80)
     
-    nx, ny = Z.shape
+    ny, nx = Z.shape
     x = np.arange(nx)
     y = np.arange(ny)
     X, Y = np.meshgrid(x, y)
@@ -121,7 +121,7 @@ def dowork_only2(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outd
     #plt.triplot(trimesh, alpha=0.3, c='0.3')
     plt.scatter(r[inode], z[inode], c='r', marker='x', s=80)
     
-    nx, ny = Z0.shape
+    ny, nx = Z0.shape
     x = np.arange(nx)
     y = np.arange(ny)
     X, Y = np.meshgrid(x, y)
@@ -167,7 +167,7 @@ def dowork_full(Z0, Z1, N0, N1, T0, T1, trimesh, r, z, fsum, inode, title, outdi
     #plt.triplot(trimesh, alpha=0.3, c='0.3')
     plt.scatter(r[inode], z[inode], c='r', marker='x', s=80)
 
-    nx, ny = Z0.shape
+    ny, nx = Z0.shape
     x = np.arange(nx)
     y = np.arange(ny)
     X, Y = np.meshgrid(x, y)
