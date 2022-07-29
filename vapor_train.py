@@ -144,15 +144,15 @@ if __name__ == "__main__":
     in_channels = dataset[0]["lr"].shape[0]
     out_channels = dataset[0]["hr"].shape[0]
 
-    util = FC(in_channels, out_channels, batch_size, nh, nw).to(device)
-    util = DDP(util)
+    model = FC(in_channels, out_channels, batch_size, nh, nw).to(device)
+    model = DDP(model)
     if rank == 0:
-        print_model(util)
+        print_model(model)
 
-    optimizer = optim.SGD(util.parameters(), lr=lr, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     if restart:
         fname = "model-%d" % (start_epoch)
-        load_model(util, prefix, fname, device=device, optimizer=optimizer)
+        load_model(model, prefix, fname, device=device, optimizer=optimizer)
         log0("load model", fname)
 
     step_size = 10
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     t0 = time.time()
     for k in range(start_epoch, start_epoch + num_epochs):
         batch_loss, lr, hr, recon = train(
-            k, util, training_loader, optimizer, loss_fn, rank, prefix
+            k, model, training_loader, optimizer, loss_fn, rank, prefix
         )
 
         bx = np.mean(batch_loss)
@@ -189,7 +189,7 @@ if __name__ == "__main__":
             and rank == 0
         ):
             fname = "model-%d" % (k + 1)
-            save_model(util, optimizer, prefix, fname)
+            save_model(model, optimizer, prefix, fname)
             log("Save model:", fname)
 
     log("Done.")
