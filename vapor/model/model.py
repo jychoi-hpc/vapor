@@ -1,6 +1,4 @@
-
-
-class Exp():
+class Exp:
     def __init__(self):
         self.model = None
         self.dataset = None

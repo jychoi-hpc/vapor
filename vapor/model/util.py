@@ -1,7 +1,7 @@
-
 import os
 import torch
 from collections import OrderedDict
+
 
 def save_model(model, optimizer, prefix, filename):
     """Save both model and optimizer state in a single checkpoint file"""
@@ -13,6 +13,7 @@ def save_model(model, optimizer, prefix, filename):
         },
         path_name,
     )
+
 
 def load_model(model, prefix, filename, device=None, optimizer=None):
     """Load both model and optimizer state from a single checkpoint file"""

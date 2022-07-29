@@ -24,6 +24,7 @@ from vapor.dataset import XGC_F0_Dataset
 from tqdm import tqdm
 import time
 
+
 def train(k, model, loader, optimizer, loss_fn, rank, prefix):
     model.train()
 
@@ -48,6 +49,7 @@ def train(k, model, loader, optimizer, loss_fn, rank, prefix):
 
     return loss_list, lr, hr, recon
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -70,7 +72,6 @@ if __name__ == "__main__":
     log_period = getconf("log_period", 100)
     plot_period = getconf("plot_period", 100)
 
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     world_size, rank = MPI.COMM_WORLD.Get_size(), MPI.COMM_WORLD.Get_rank()
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     setup_log(prefix, rank)
     setup_ddp(rank, world_size)
 
-    composed = transforms.Compose([Crop([0,4], [32,32]), ToTensor()])
+    composed = transforms.Compose([Crop([0, 4], [32, 32]), ToTensor()])
     dataset = XGC_F0_Dataset(
         "d3d_coarse_v2/restart_dir",
         "d3d_coarse_v2_4x/restart_dir",
@@ -165,21 +166,30 @@ if __name__ == "__main__":
     train_loss = list()
     t0 = time.time()
     for k in range(start_epoch, start_epoch + num_epochs):
-        batch_loss, lr, hr, recon = train(k, util, training_loader, optimizer, loss_fn, rank, prefix)
+        batch_loss, lr, hr, recon = train(
+            k, util, training_loader, optimizer, loss_fn, rank, prefix
+        )
 
         bx = np.mean(batch_loss)
         if scheduler is not None:
             scheduler.step(bx)
 
         if (k + 1) % log_period == 0 and rank == 0:
-            log("Epoch %d loss,lr: %g %g %g" % (k, bx, optimizer.param_groups[0]["lr"], time.time()-t0))
+            log(
+                "Epoch %d loss,lr: %g %g %g"
+                % (k, bx, optimizer.param_groups[0]["lr"], time.time() - t0)
+            )
 
         if (k + 1) % plot_period == 0 and rank == 0:
             plot_one(lr, hr, recon, istep=k + 1, scale_each=False, prefix=prefix)
-            
-        if (k + 1) % checkpoint_period == 0 or (k + 1) == start_epoch + num_epochs and rank == 0:
+
+        if (
+            (k + 1) % checkpoint_period == 0
+            or (k + 1) == start_epoch + num_epochs
+            and rank == 0
+        ):
             fname = "model-%d" % (k + 1)
             save_model(util, optimizer, prefix, fname)
             log("Save model:", fname)
 
-    log("Done.")    
+    log("Done.")

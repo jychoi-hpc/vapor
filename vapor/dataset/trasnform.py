@@ -17,8 +17,8 @@ class Crop(object):
         o0, o1 = self.offset
         w0, w1 = self.width
 
-        lr = sample["lr"][o0: o0+w0, o1: o1+w1, :]
-        hr = sample["hr"][o0: o0+w0, o1: o1+w1, :]
+        lr = sample["lr"][o0 : o0 + w0, o1 : o1 + w1, :]
+        hr = sample["hr"][o0 : o0 + w0, o1 : o1 + w1, :]
         lb = sample["lb"]
 
         return {"lr": lr, "hr": hr, "lb": lb}

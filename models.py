@@ -8,16 +8,18 @@ import math
 class XGCFeatureExtractor(nn.Module):
     def __init__(self, modelfile):
         super(XGCFeatureExtractor, self).__init__()
-        #vgg19_model = vgg19(pretrained=True)
-        print("Loading '%s'"%modelfile)
+        # vgg19_model = vgg19(pretrained=True)
+        print("Loading '%s'" % modelfile)
 
         if torch.cuda.is_available():
-            map_location=lambda storage, loc: storage.cuda()
+            map_location = lambda storage, loc: storage.cuda()
         else:
-            map_location='cpu'        
+            map_location = "cpu"
         vgg19_model = torch.load(modelfile, map_location=map_location)
         # self.feature_extractor = vgg19_model
-        self.feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
+        self.feature_extractor = nn.Sequential(
+            *list(vgg19_model.features.children())[:18]
+        )
 
     def forward(self, img):
         return self.feature_extractor(img)
@@ -27,7 +29,9 @@ class FeatureExtractor(nn.Module):
     def __init__(self):
         super(FeatureExtractor, self).__init__()
         vgg19_model = vgg19(pretrained=True)
-        self.feature_extractor = nn.Sequential(*list(vgg19_model.features.children())[:18])
+        self.feature_extractor = nn.Sequential(
+            *list(vgg19_model.features.children())[:18]
+        )
 
     def forward(self, img):
         return self.feature_extractor(img)
@@ -53,7 +57,9 @@ class GeneratorResNet(nn.Module):
         super(GeneratorResNet, self).__init__()
 
         # First layer
-        self.conv1 = nn.Sequential(nn.Conv2d(in_channels, 64, kernel_size=9, stride=1, padding=4), nn.PReLU())
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=9, stride=1, padding=4), nn.PReLU()
+        )
 
         # Residual blocks
         res_blocks = []
@@ -62,7 +68,10 @@ class GeneratorResNet(nn.Module):
         self.res_blocks = nn.Sequential(*res_blocks)
 
         # Second conv layer post residual blocks
-        self.conv2 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1), nn.BatchNorm2d(64, 0.8))
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64, 0.8),
+        )
 
         # Upsampling layers
         upsampling = []
@@ -78,7 +87,10 @@ class GeneratorResNet(nn.Module):
 
         # Final output layer
         # self.conv3 = nn.Sequential(nn.Conv2d(64, out_channels, kernel_size=9, stride=1, padding=4), nn.Tanh())
-        self.conv3 = nn.Sequential(nn.Conv2d(64, out_channels, kernel_size=9, stride=1, padding=4), nn.Sigmoid())
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, out_channels, kernel_size=9, stride=1, padding=4),
+            nn.Sigmoid(),
+        )
 
     def forward(self, x):
         out1 = self.conv1(x)
@@ -101,11 +113,15 @@ class Discriminator(nn.Module):
 
         def discriminator_block(in_filters, out_filters, first_block=False):
             layers = []
-            layers.append(nn.Conv2d(in_filters, out_filters, kernel_size=3, stride=1, padding=1))
+            layers.append(
+                nn.Conv2d(in_filters, out_filters, kernel_size=3, stride=1, padding=1)
+            )
             if not first_block:
                 layers.append(nn.BatchNorm2d(out_filters))
             layers.append(nn.LeakyReLU(0.2, inplace=True))
-            layers.append(nn.Conv2d(out_filters, out_filters, kernel_size=3, stride=2, padding=1))
+            layers.append(
+                nn.Conv2d(out_filters, out_filters, kernel_size=3, stride=2, padding=1)
+            )
             layers.append(nn.BatchNorm2d(out_filters))
             layers.append(nn.LeakyReLU(0.2, inplace=True))
             return layers
@@ -113,7 +129,9 @@ class Discriminator(nn.Module):
         layers = []
         in_filters = in_channels
         for i, out_filters in enumerate([64, 128, 256, 512]):
-            layers.extend(discriminator_block(in_filters, out_filters, first_block=(i == 0)))
+            layers.extend(
+                discriminator_block(in_filters, out_filters, first_block=(i == 0))
+            )
             in_filters = out_filters
 
         layers.append(nn.Conv2d(out_filters, 1, kernel_size=3, stride=1, padding=1))
