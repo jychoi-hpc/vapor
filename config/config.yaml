@@ -1,0 +1,11 @@
+## parameters
+jobname: f2f
+model_class: f2f
+batch_size: 8
+num_epochs: 100
+learning_rate: 1.0e-3
+restart: true
+start_epoch : 30
+checkpoint_period: 100
+log_period: 10
+plot_period: 10
