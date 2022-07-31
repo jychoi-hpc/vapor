@@ -1,6 +1,6 @@
 ## parameters
-jobname: fno
-model_class: fno
+jobname: fc
+model_class: fc
 batch_size: 256
 num_epochs: 10000
 learning_rate: 1.0e-3

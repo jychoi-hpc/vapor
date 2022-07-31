@@ -55,15 +55,15 @@ def setup_log(prefix, rank):
 
 def print_model(model):
     """print model's parameter size layer by layer"""
-    log(type(model.module).__name__)
+    log("%50s" % (type(model.module).__name__))
     log("-" * 50)
     num_params = 0
     for k, v in model.state_dict().items():
-        log("%50s\t%20s\t%10d" % (k, list(v.shape), v.numel()))
+        log("%50s\t%15s\t%15d" % (k, list(v.shape), v.numel()))
         num_params += v.numel()
     log("-" * 50)
-    log("%50s\t%20s\t%10d" % ("Total", "", num_params))
-    log("All (total, bytes): %g %g" % (num_params, num_params * 4))
+    log("%50s\t%15s\t%15d" % ("Total", "", num_params))
+    log("%50s\t%15g\t%15g" % ("All (total, bytes)", num_params, num_params * 4))
 
 
 def plot_one(

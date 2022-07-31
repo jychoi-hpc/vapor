@@ -24,18 +24,33 @@ from vapor.dataset import XGC_F0_Dataset
 
 from tqdm import tqdm
 import time
+from typing import *
+
+
+def dget(d: Dict, key, default=None):
+    if key not in d:
+        d[key] = default
+    return d[key]
 
 
 def create_model(config):
-    model_class = config.get("model_class")
-    model_params = config.get("model_params", {})
+    model_class = dget(config, "model_class")
+    model_params = dget(config, "model_params", {})
     model = None
     if model_class == "fc":
         model = FC(**config)
     elif model_class == "fno":
-        num_blocks = model_params.get("num_blocks", [3, 4, 23, 3])
-        modes = model_params.get("modes", 3)
+        num_blocks = dget(model_params, "num_blocks", [3, 4, 23, 3])
+        modes = dget(model_params, "modes", 3)
         model = FNO(num_blocks=num_blocks, modes=modes)
+    elif model_class == "f2f":
+        in_channels = dget(model_params, "in_channels", 3)
+        out_channels = dget(model_params, "out_channels", 3)
+        num_hiddens = dget(model_params, "num_hiddens", 64)
+        num_residual_layers = dget(model_params, "num_residual_layers", 32)
+        ks = dget(model_params, "ks", [9, 3, 1])
+        model = F2F(in_channels, out_channels, num_hiddens, num_residual_layers, ks)
+
     else:
         raise NotImplementedError
     return model
@@ -76,17 +91,17 @@ if __name__ == "__main__":
         config = yaml.load(f, Loader=yaml.FullLoader)
         initconf(config)
 
-    batch_size = getconf("batch_size", 128)
-    start_epoch = getconf("start_epoch", 0)
-    num_epochs = getconf("num_epochs", 10)
-    lr = getconf("learning_rate", 1.0e-3)
-    wdir = getconf("wdir", "wdir")
-    jobname = getconf("jobname", "vapor")
+    batch_size = dget(config, "batch_size", 128)
+    start_epoch = dget(config, "start_epoch", 0)
+    num_epochs = dget(config, "num_epochs", 10)
+    lr = dget(config, "learning_rate", 1.0e-3)
+    wdir = dget(config, "wdir", "wdir")
+    jobname = dget(config, "jobname", "vapor")
     prefix = os.path.join(wdir, jobname)
-    restart = getconf("restart", False)
-    checkpoint_period = getconf("checkpoint_period", 100)
-    log_period = getconf("log_period", 100)
-    plot_period = getconf("plot_period", 100)
+    restart = dget(config, "restart", False)
+    checkpoint_period = dget(config, "checkpoint_period", 100)
+    log_period = dget(config, "log_period", 100)
+    plot_period = dget(config, "plot_period", 100)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     world_size, rank = MPI.COMM_WORLD.Get_size(), MPI.COMM_WORLD.Get_rank()
@@ -100,14 +115,18 @@ if __name__ == "__main__":
     setup_log(prefix, rank)
     setup_ddp(rank, world_size)
 
+    dataset_params = dget(config, "dataset_params", {})
+    iphi = dget(dataset_params, "iphi", 0)
+    inode = dget(dataset_params, "inode", 12000)
+    nnodes = dget(dataset_params, "nnodes", 2000)
     composed = transforms.Compose([Crop([0, 4], [32, 32]), ToTensor()])
     dataset = XGC_F0_Dataset(
         "d3d_coarse_v2/restart_dir",
         "d3d_coarse_v2_4x/restart_dir",
         istep=420,
-        iphi=0,
-        inode=12000,
-        nnodes=2000,
+        iphi=iphi,
+        inode=inode,
+        nnodes=nnodes,
         normalize=True,
         transform=composed,
     )
@@ -180,6 +199,10 @@ if __name__ == "__main__":
     )
     loss_fn = nn.MSELoss()
 
+    if rank == 0:
+        with open(os.path.join(prefix, "config.yaml"), "w") as f:
+            yaml.dump(config, f)
+
     train_loss = list()
     t0 = time.time()
     for k in range(start_epoch, start_epoch + num_epochs):
@@ -194,7 +217,7 @@ if __name__ == "__main__":
         if (k + 1) % log_period == 0 and rank == 0:
             log(
                 "Epoch %d loss,lr: %g %g %g"
-                % (k, bx, optimizer.param_groups[0]["lr"], time.time() - t0)
+                % (k + 1, bx, optimizer.param_groups[0]["lr"], time.time() - t0)
             )
 
         if (k + 1) % plot_period == 0 and rank == 0:
