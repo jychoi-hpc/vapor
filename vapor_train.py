@@ -204,6 +204,7 @@ if __name__ == "__main__":
             yaml.dump(config, f)
 
     train_loss = list()
+    train_step = list()
     t0 = time.time()
     for k in range(start_epoch, start_epoch + num_epochs):
         batch_loss, lr, hr, recon = train(
@@ -211,6 +212,8 @@ if __name__ == "__main__":
         )
 
         bx = np.mean(batch_loss)
+        train_loss.append(bx)
+        train_step.append(k + 1)
         if scheduler is not None:
             scheduler.step(bx)
 
@@ -222,6 +225,7 @@ if __name__ == "__main__":
 
         if (k + 1) % plot_period == 0 and rank == 0:
             plot_one(lr, hr, recon, istep=k + 1, scale_each=False, prefix=prefix)
+            plot_loss(train_step, train_loss, istep=k + 1, prefix=prefix)
 
         if (
             (k + 1) % checkpoint_period == 0 or (k + 1) == start_epoch + num_epochs

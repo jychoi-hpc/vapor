@@ -74,7 +74,7 @@ def plot_one(
     prefix=None,
     scale_each=False,
 ):
-    plt.figure(99, figsize=[12, 4])
+    plt.figure(103, figsize=[12, 4])
     x = inputs
     y = originals
     z = reconstructions
@@ -102,11 +102,27 @@ def plot_one(
 
     plt.imshow(out[..., 0])
     plt.axis("off")
-    plt.title("epoch: %d" % istep)
+    plt.title("Epoch: %d" % istep)
     plt.tight_layout()
     plt.show(block=False)
     plt.pause(0.1)
 
     if prefix is not None:
         path_name = os.path.join(prefix, "img-%d.jpg" % istep)
+        plt.savefig(path_name)
+
+
+def plot_loss(train_step, train_loss, istep, prefix=None):
+    plt.figure(101)
+    plt.plot(train_step, train_loss)
+    plt.yscale("log")
+    plt.xlabel("Iteration")
+    plt.ylabel("MSE")
+    plt.title("Epoch: %d" % istep)
+    plt.tight_layout()
+    plt.show(block=False)
+    plt.pause(0.1)
+
+    if prefix is not None:
+        path_name = os.path.join(prefix, "loss-%d.jpg" % istep)
         plt.savefig(path_name)
