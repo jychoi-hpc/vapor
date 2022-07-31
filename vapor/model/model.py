@@ -14,3 +14,11 @@ class Exp:
     @model.setter
     def model(self, name):
         self.model = name
+
+    @property
+    def optimizer(self):
+        return self.optimizer
+
+    @optimizer.setter
+    def optimizer(self, name, *args, **kwards):
+        self.optimizer = name

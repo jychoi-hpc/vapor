@@ -2,8 +2,9 @@ import torch.nn as nn
 
 
 class ResidualBlockLinear(nn.Module):
-    def __init__(self, in_features):
-        super(ResidualBlockLinear, self).__init__()
+    def __init__(self, in_features, **kwargs):
+        super().__init__()
+
         self.block = nn.Sequential(
             nn.Linear(in_features, in_features),
             nn.BatchNorm1d(in_features),
@@ -17,12 +18,11 @@ class ResidualBlockLinear(nn.Module):
 
 
 class FC(nn.Module):
-    def __init__(self, in_channels, out_channels, nbatch, nh, nw):
-        super(FC, self).__init__()
+    def __init__(self, in_channels=3, out_channels=3, nh=32, nw=32, **kwargs):
+        super().__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.nbatch = nbatch
         self.nh = nh
         self.nw = nw
 

@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import re
 import os
+from .logging import log
 
 
 def parse_slurm_nodelist(nodelist):
@@ -43,7 +44,7 @@ def setup_ddp(rank, world_size):
 
     if dist.is_nccl_available():
         backend = "nccl"
-    elif torch.distributed.is_gloo_available():
+    elif dist.is_gloo_available():
         backend = "gloo"
     else:
         raise RuntimeError("No parallel backends available")
@@ -65,3 +66,4 @@ def setup_ddp(rank, world_size):
 
     # initialize the process group
     dist.init_process_group(backend, rank=rank, world_size=world_size)
+    log("DDP setup:", dist.get_backend(), dist.get_rank(), dist.get_world_size())

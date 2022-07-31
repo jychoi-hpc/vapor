@@ -2,6 +2,7 @@ import os
 import sched
 import sys
 import argparse
+from venv import create
 import yaml
 from mpi4py import MPI
 
@@ -23,6 +24,21 @@ from vapor.dataset import XGC_F0_Dataset
 
 from tqdm import tqdm
 import time
+
+
+def create_model(config):
+    model_class = config.get("model_class")
+    model_params = config.get("model_params", {})
+    model = None
+    if model_class == "fc":
+        model = FC(**config)
+    elif model_class == "fno":
+        num_blocks = model_params.get("num_blocks", [3, 4, 23, 3])
+        modes = model_params.get("modes", 3)
+        model = FNO(num_blocks=num_blocks, modes=modes)
+    else:
+        raise NotImplementedError
+    return model
 
 
 def train(k, model, loader, optimizer, loss_fn, rank, prefix):
@@ -144,7 +160,8 @@ if __name__ == "__main__":
     in_channels = dataset[0]["lr"].shape[0]
     out_channels = dataset[0]["hr"].shape[0]
 
-    model = FC(in_channels, out_channels, batch_size, nh, nw).to(device)
+    model = create_model(config)
+    model = model.to(device)
     model = DDP(model)
     if rank == 0:
         print_model(model)

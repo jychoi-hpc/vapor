@@ -1,20 +1,13 @@
+def initconf(config):
+    globals().update({"vapor_config": config})
+
+
 def setconf(key, val):
     ## TODO: make hierarchical
-    config = globals()["vaporconf"]
+    config = globals()["vapor_config"]
     config[key] = val
 
 
-def initconf(config):
-    globals().update({"vaporconf": config})
-
-
 def getconf(key, default=None):
-    ans = default
-    try:
-        config = globals()["vaporconf"]
-        if key in config:
-            ans = config[key]
-    except:
-        pass
-
-    return ans
+    config = globals()["vapor_config"]
+    return config.get(key, default)
