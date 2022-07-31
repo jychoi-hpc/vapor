@@ -1,15 +1,11 @@
 ## parameters
 jobname: fno
 model_class: fno
-batch_size: 8
-num_epochs: 100
+batch_size: 256
+num_epochs: 10000
 learning_rate: 1.0e-3
 restart: false
 start_epoch : 0
-checkpoint_period: 100
-log_period: 1
-plot_period: 1
-
-## FNO
-model_params:
-  num_blocks: [3, 4, 23, 3]
+checkpoint_period: 1000
+log_period: 100
+plot_period: 100
