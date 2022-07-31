@@ -114,8 +114,9 @@ def plot_one(
 
 def plot_loss(train_step, train_loss, istep, prefix=None):
     plt.figure(101)
-    plt.plot(train_step, train_loss)
+    plt.plot(train_step, train_loss, c="b")
     plt.yscale("log")
+    plt.grid(True, which="both", linestyle="--")
     plt.xlabel("Iteration")
     plt.ylabel("MSE")
     plt.title("Epoch: %d" % istep)
