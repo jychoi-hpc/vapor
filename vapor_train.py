@@ -107,7 +107,7 @@ if __name__ == "__main__":
         istep=420,
         iphi=0,
         inode=12000,
-        nnodes=1000,
+        nnodes=2000,
         normalize=True,
         transform=composed,
     )
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     gamma = 0.1
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=100, verbose=True
+        optimizer, "min", patience=1000, verbose=True
     )
     loss_fn = nn.MSELoss()
 
@@ -201,10 +201,8 @@ if __name__ == "__main__":
             plot_one(lr, hr, recon, istep=k + 1, scale_each=False, prefix=prefix)
 
         if (
-            (k + 1) % checkpoint_period == 0
-            or (k + 1) == start_epoch + num_epochs
-            and rank == 0
-        ):
+            (k + 1) % checkpoint_period == 0 or (k + 1) == start_epoch + num_epochs
+        ) and rank == 0:
             fname = "model-%d" % (k + 1)
             save_model(model, optimizer, prefix, fname)
             log("Save model:", fname)
