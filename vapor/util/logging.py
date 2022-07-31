@@ -6,6 +6,7 @@ import torch
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 import numpy as np
+from scipy.signal import savgol_filter
 
 from .config import getconf
 
@@ -74,7 +75,7 @@ def plot_one(
     prefix=None,
     scale_each=False,
 ):
-    plt.figure(103, figsize=[12, 4])
+    plt.figure(103)
     x = inputs
     y = originals
     z = reconstructions
@@ -113,6 +114,7 @@ def plot_one(
 
 
 def plot_loss(train_step, train_loss, istep, prefix=None):
+    # y = savgol_filter(train_loss, 201, 7)
     plt.figure(101)
     plt.plot(train_step, train_loss, c="b")
     plt.yscale("log")
