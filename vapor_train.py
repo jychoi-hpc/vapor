@@ -34,26 +34,61 @@ def dget(d: Dict, key, default=None):
 
 
 def create_model(config):
-    model_class = dget(config, "model_class")
-    model_params = dget(config, "model_params", {})
-    model = None
-    if model_class == "fc":
-        model = FC(**config)
-    elif model_class == "fno":
-        num_blocks = dget(model_params, "num_blocks", [3, 4, 23, 3])
-        modes = dget(model_params, "modes", 3)
-        model = FNO(num_blocks=num_blocks, modes=modes)
-    elif model_class == "f2f":
-        in_channels = dget(model_params, "in_channels", 3)
-        out_channels = dget(model_params, "out_channels", 3)
-        num_hiddens = dget(model_params, "num_hiddens", 64)
-        num_residual_layers = dget(model_params, "num_residual_layers", 32)
-        ks = dget(model_params, "ks", [9, 3, 1])
-        model = F2F(in_channels, out_channels, num_hiddens, num_residual_layers, ks)
-
+    name = dget(config, "model_class")
+    params = dget(config, "model_params", {})
+    obj = None
+    if name == "fc":
+        obj = FC(**config)
+    elif name == "fno":
+        num_blocks = dget(params, "num_blocks", [3, 4, 23, 3])
+        modes = dget(params, "modes", 3)
+        obj = FNO(num_blocks=num_blocks, modes=modes)
+    elif name == "f2f":
+        in_channels = dget(params, "in_channels", 3)
+        out_channels = dget(params, "out_channels", 3)
+        num_hiddens = dget(params, "num_hiddens", 64)
+        num_residual_layers = dget(params, "num_residual_layers", 32)
+        ks = dget(params, "ks", [9, 3, 1])
+        obj = F2F(in_channels, out_channels, num_hiddens, num_residual_layers, ks)
     else:
         raise NotImplementedError
-    return model
+
+    return obj
+
+
+def create_opimizer(model, config):
+    name = dget(config, "optimizer_class", "SGD")
+    params = dget(config, "optimizer_params", {})
+    obj = None
+    if name == "SGD":
+        lr = dget(params, "lr", 1.0e-3)
+        momentum = dget(params, "momentum", 0.9)
+        obj = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+    else:
+        raise NotImplementedError
+
+    return obj
+
+
+def create_scheduler(optimizer, config):
+    name = dget(config, "scheduler_class", "ReduceLROnPlateau")
+    params = dget(config, "scheduler_params", {})
+    obj = None
+    if name == "ReduceLROnPlateau":
+        patience = dget(params, "patience", 1000)
+        obj = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, "min", patience=patience, verbose=True
+        )
+    elif name == "StepLR":
+        step_size = dget(params, "step_size", 1000)
+        gamma = dget(params, "gamma", 0.1)
+        obj = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=step_size, gamma=gamma, verbose=True
+        )
+    else:
+        raise NotImplementedError
+
+    return obj
 
 
 def train(k, model, loader, optimizer, loss_fn, rank, prefix):
@@ -94,7 +129,6 @@ if __name__ == "__main__":
     batch_size = dget(config, "batch_size", 128)
     start_epoch = dget(config, "start_epoch", 0)
     num_epochs = dget(config, "num_epochs", 10)
-    lr = dget(config, "learning_rate", 1.0e-3)
     wdir = dget(config, "wdir", "wdir")
     jobname = dget(config, "jobname", "vapor")
     prefix = os.path.join(wdir, jobname)
@@ -185,14 +219,9 @@ if __name__ == "__main__":
     if rank == 0:
         print_model(model)
 
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+    optimizer = create_opimizer(model, config)
+    scheduler = create_scheduler(optimizer, config)
 
-    step_size = 10
-    gamma = 0.1
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min", patience=1000, verbose=True
-    )
     if restart:
         fname = "model-%d" % (start_epoch)
         load_model(model, prefix, fname, device=device, optimizer=optimizer)
