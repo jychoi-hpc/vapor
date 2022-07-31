@@ -186,10 +186,6 @@ if __name__ == "__main__":
         print_model(model)
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
-    if restart:
-        fname = "model-%d" % (start_epoch)
-        load_model(model, prefix, fname, device=device, optimizer=optimizer)
-        log0("load model", fname)
 
     step_size = 10
     gamma = 0.1
@@ -197,12 +193,16 @@ if __name__ == "__main__":
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, "min", patience=1000, verbose=True
     )
-    loss_fn = nn.MSELoss()
+    if restart:
+        fname = "model-%d" % (start_epoch)
+        load_model(model, prefix, fname, device=device, optimizer=optimizer)
+        log0("load model", fname)
 
     if rank == 0:
         with open(os.path.join(prefix, "config.yaml"), "w") as f:
             yaml.dump(config, f)
 
+    loss_fn = nn.MSELoss()
     train_loss = list()
     train_step = list()
     t0 = time.time()
