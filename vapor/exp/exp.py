@@ -23,6 +23,28 @@ def create_model(config):
         num_residual_layers = dget(params, "num_residual_layers", 32)
         ks = dget(params, "ks", [9, 3, 1])
         obj = F2F(in_channels, out_channels, num_hiddens, num_residual_layers, ks)
+    elif name == "vqvae":
+        in_channels = dget(params, "in_channels", 3)
+        out_channels = dget(params, "out_channels", 3)
+        num_hiddens = dget(params, "num_hiddens", 128)
+        num_residual_layers = dget(params, "num_residual_layers", 16)
+
+        num_residual_hiddens = dget(params, "num_residual_hiddens", 32)
+        num_embeddings = dget(params, "num_embeddings", 512)
+        embedding_dim = dget(params, "embedding_dim", 64)
+        commitment_cost = dget(params, "commitment_cost", 0.25)
+        decay = dget(params, "decay", 0.0)
+        obj = VQVAE(
+            in_channels,
+            out_channels,
+            num_hiddens,
+            num_residual_layers,
+            num_residual_hiddens,
+            num_embeddings,
+            embedding_dim,
+            commitment_cost,
+            decay,
+        )
     else:
         raise NotImplementedError
 
@@ -68,7 +90,7 @@ class Exp:
     def __init__(self, config, device):
         self.model = create_model(config)
         self.model = self.model.to(device)
-        self.model = DDP(self.model)
+        self.model = DDP(self.model, find_unused_parameters=False)
 
         self.optimizer = create_opimizer(self.model, config)
         self.scheduler = create_scheduler(self.optimizer, config)
@@ -96,6 +118,36 @@ class Exp:
 
             recon = self.model(lr)
             loss = self.loss_fn(recon, hr)
+            loss.backward()
+            self.optimizer.step()
+
+            loss_list.append(loss.item())
+
+        return loss_list, lr, hr, recon
+
+
+class Exp2(Exp):
+    def __init__(self, config, device):
+        super().__init__(config, device)
+
+    def train(self, k):
+        self.model.train()
+
+        if getattr(self.train_loader.sampler, "set_epoch", None) is not None:
+            self.train_loader.sampler.set_epoch(k)
+
+        m = len(self.train_loader)
+        loss_list = list()
+        for i, sample in enumerate(self.train_loader):
+            lr = sample["lr"].to(self.device)
+            hr = sample["hr"].to(self.device)
+            lb = sample["lb"].to(self.device)
+
+            self.optimizer.zero_grad()
+
+            vq_loss, recon, perplexity = self.model(lr)
+            recon_error = self.loss_fn(recon, hr)
+            loss = recon_error + vq_loss
             loss.backward()
             self.optimizer.step()
 

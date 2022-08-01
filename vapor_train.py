@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 
 from vapor.util import *
 from vapor.exp import *
+from vapor.model import *
 from vapor.dataset.trasnform import Crop, ToTensor
 from vapor.dataset import XGC_F0_Dataset
 
@@ -116,7 +117,10 @@ if __name__ == "__main__":
     in_channels = dataset[0]["lr"].shape[0]
     out_channels = dataset[0]["hr"].shape[0]
 
-    exp = Exp(config, device)
+    if config["model_class"] == "vqvae":
+        exp = Exp2(config, device)
+    else:
+        exp = Exp(config, device)
     exp.train_loader = training_loader
     exp.validation_loader = validation_loader
     exp.loss_fn = torch.nn.MSELoss()
