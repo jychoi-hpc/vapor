@@ -1,120 +1,23 @@
 import os
-import sched
 import sys
 import argparse
-from venv import create
 import yaml
 from mpi4py import MPI
+import numpy as np
 
 import torch
 import torchvision.transforms as transforms
-import torch.optim as optim
-import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-import numpy as np
 
 from torch.utils.data import DataLoader, Subset, DistributedSampler
 from sklearn.model_selection import train_test_split
 
 from vapor.util import *
-from vapor.model import *
+from vapor.exp import *
 from vapor.dataset.trasnform import Crop, ToTensor
 from vapor.dataset import XGC_F0_Dataset
 
 from tqdm import tqdm
 import time
-from typing import *
-
-
-def dget(d: Dict, key, default=None):
-    if key not in d:
-        d[key] = default
-    return d[key]
-
-
-def create_model(config):
-    name = dget(config, "model_class")
-    params = dget(config, "model_params", {})
-    obj = None
-    if name == "fc":
-        obj = FC(**config)
-    elif name == "fno":
-        num_blocks = dget(params, "num_blocks", [3, 4, 23, 3])
-        modes = dget(params, "modes", 3)
-        obj = FNO(num_blocks=num_blocks, modes=modes)
-    elif name == "f2f":
-        in_channels = dget(params, "in_channels", 3)
-        out_channels = dget(params, "out_channels", 3)
-        num_hiddens = dget(params, "num_hiddens", 64)
-        num_residual_layers = dget(params, "num_residual_layers", 32)
-        ks = dget(params, "ks", [9, 3, 1])
-        obj = F2F(in_channels, out_channels, num_hiddens, num_residual_layers, ks)
-    else:
-        raise NotImplementedError
-
-    return obj
-
-
-def create_opimizer(model, config):
-    name = dget(config, "optimizer_class", "SGD")
-    params = dget(config, "optimizer_params", {})
-    obj = None
-    if name == "SGD":
-        lr = dget(params, "lr", 1.0e-3)
-        momentum = dget(params, "momentum", 0.9)
-        obj = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
-    else:
-        raise NotImplementedError
-
-    return obj
-
-
-def create_scheduler(optimizer, config):
-    name = dget(config, "scheduler_class", "ReduceLROnPlateau")
-    params = dget(config, "scheduler_params", {})
-    obj = None
-    if name == "ReduceLROnPlateau":
-        patience = dget(params, "patience", 1000)
-        obj = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, "min", patience=patience, verbose=True
-        )
-    elif name == "StepLR":
-        step_size = dget(params, "step_size", 1000)
-        gamma = dget(params, "gamma", 0.1)
-        obj = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=step_size, gamma=gamma, verbose=True
-        )
-    else:
-        raise NotImplementedError
-
-    return obj
-
-
-def train(k, model, loader, optimizer, loss_fn, rank, prefix):
-    model.train()
-
-    if getattr(loader.sampler, "set_epoch", None) is not None:
-        loader.sampler.set_epoch(k)
-
-    m = len(loader)
-    loss_list = list()
-    for i, sample in enumerate(loader):
-        lr = sample["lr"].to(device)
-        hr = sample["hr"].to(device)
-        lb = sample["lb"].to(device)
-
-        optimizer.zero_grad()
-
-        recon = model(lr)
-        loss = loss_fn(recon, hr)
-        loss.backward()
-        optimizer.step()
-
-        loss_list.append(loss.item())
-
-    return loss_list, lr, hr, recon
-
 
 if __name__ == "__main__":
 
@@ -213,43 +116,39 @@ if __name__ == "__main__":
     in_channels = dataset[0]["lr"].shape[0]
     out_channels = dataset[0]["hr"].shape[0]
 
-    model = create_model(config)
-    model = model.to(device)
-    model = DDP(model)
-    if rank == 0:
-        print_model(model)
+    exp = Exp(config, device)
+    exp.train_loader = training_loader
+    exp.validation_loader = validation_loader
+    exp.loss_fn = torch.nn.MSELoss()
 
-    optimizer = create_opimizer(model, config)
-    scheduler = create_scheduler(optimizer, config)
+    if rank == 0:
+        print_model(exp.model)
 
     if restart:
         fname = "model-%d" % (start_epoch)
-        load_model(model, prefix, fname, device=device, optimizer=optimizer)
+        load_model(exp.model, prefix, fname, device=device, optimizer=exp.optimizer)
         log0("load model", fname)
 
     if rank == 0:
         with open(os.path.join(prefix, "config.yaml"), "w") as f:
             yaml.dump(config, f)
 
-    loss_fn = nn.MSELoss()
     train_loss = list()
     train_step = list()
     t0 = time.time()
     for k in range(start_epoch, start_epoch + num_epochs):
-        batch_loss, lr, hr, recon = train(
-            k, model, training_loader, optimizer, loss_fn, rank, prefix
-        )
+        batch_loss, lr, hr, recon = exp.train(k)
 
         bx = np.mean(batch_loss)
         train_loss.append(bx)
         train_step.append(k + 1)
-        if scheduler is not None:
-            scheduler.step(bx)
+        if exp.scheduler is not None:
+            exp.scheduler.step(bx)
 
         if (k + 1) % log_period == 0 and rank == 0:
             log(
                 "Epoch %d loss,lr: %g %g %g"
-                % (k + 1, bx, optimizer.param_groups[0]["lr"], time.time() - t0)
+                % (k + 1, bx, exp.optimizer.param_groups[0]["lr"], time.time() - t0)
             )
 
         if (k + 1) % plot_period == 0 and rank == 0:
@@ -260,7 +159,7 @@ if __name__ == "__main__":
             (k + 1) % checkpoint_period == 0 or (k + 1) == start_epoch + num_epochs
         ) and rank == 0:
             fname = "model-%d" % (k + 1)
-            save_model(model, optimizer, prefix, fname)
+            save_model(exp.model, exp.optimizer, prefix, fname)
             log("Save model:", fname)
 
     log("Done.")
