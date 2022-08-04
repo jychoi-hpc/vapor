@@ -153,4 +153,7 @@ class Exp2(Exp):
 
             loss_list.append(loss.item())
 
+            if (k + 1) % 10 == 0:
+                log("recon_errror,vq_loss", recon_error.item(), vq_loss.item())
+
         return loss_list, lr, hr, recon

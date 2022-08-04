@@ -159,9 +159,7 @@ if __name__ == "__main__":
             plot_one(lr, hr, recon, istep=k + 1, scale_each=False, prefix=prefix)
             plot_loss(train_step, train_loss, istep=k + 1, prefix=prefix)
 
-        if (
-            (k + 1) % checkpoint_period == 0 or (k + 1) == start_epoch + num_epochs
-        ) and rank == 0:
+        if (k + 1) % checkpoint_period == 0 and rank == 0:
             fname = "model-%d" % (k + 1)
             save_model(exp.model, exp.optimizer, prefix, fname)
             log("Save model:", fname)
