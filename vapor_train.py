@@ -117,8 +117,24 @@ if __name__ == "__main__":
     in_channels = dataset[0]["lr"].shape[0]
     out_channels = dataset[0]["hr"].shape[0]
 
+    ## variance sigma^2 (numpy version): (\sum x^2)/N - ((\sum x)/N)^2
+    ## Unbiased variance (torch version): (N-1)/N sigma^2
+    s, ss, cnt = 0, 0, 0
+    for i, sample in enumerate(training_loader):
+        hr = sample["hr"]
+        ss += (hr ** 2).sum().item()
+        s += (hr).sum().item()
+        cnt += hr.numel()
+
+    ## Aggregate
+    x = torch.tensor([s, ss, cnt]).to(device)
+    torch.distributed.all_reduce(x, op=torch.distributed.ReduceOp.SUM)
+
+    s, ss, cnt = x[0].item(), x[1].item(), x[2].item()
+    data_variance = (ss / cnt - (s / cnt) ** 2) * (cnt - 1) / cnt
+
     if config["model_class"] == "vqvae":
-        exp = Exp2(config, device)
+        exp = Exp2(config, device, data_variance)
     else:
         exp = Exp(config, device)
     exp.train_loader = training_loader

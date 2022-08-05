@@ -56,11 +56,13 @@ def setup_log(prefix, rank):
 
 def print_model(model):
     """print model's parameter size layer by layer"""
+    _model = model
     if hasattr(model, "module"):
-        log("%50s" % (type(model.module).__name__))
+        _model = model.module
+    log("%50s" % (type(_model).__name__))
     log("-" * 50)
     num_params = 0
-    for k, v in model.state_dict().items():
+    for k, v in _model.state_dict().items():
         log("%50s\t%15s\t%15d" % (k, list(v.shape), v.numel()))
         num_params += v.numel()
     log("-" * 50)

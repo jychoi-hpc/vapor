@@ -127,8 +127,17 @@ class Exp:
 
 
 class Exp2(Exp):
-    def __init__(self, config, device):
+    def __init__(self, config, device, data_variance):
         super().__init__(config, device)
+
+        self.data_variance = data_variance
+
+        # if data_variance is None:
+        #     training_data_list = list()
+        #     for i in range(len(training_data)):
+        #         training_data_list.append(training_data[i]['hr'])
+
+        #     data_variance = torch.cat(training_data_list).var().item()
 
     def train(self, k):
         self.model.train()
@@ -147,7 +156,7 @@ class Exp2(Exp):
 
             vq_loss, recon, perplexity = self.model(lr)
             recon_error = self.loss_fn(recon, hr)
-            loss = recon_error + vq_loss
+            loss = recon_error / self.data_variance + vq_loss
             loss.backward()
             self.optimizer.step()
 
