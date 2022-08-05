@@ -155,8 +155,8 @@ class Exp2(Exp):
             self.optimizer.zero_grad()
 
             vq_loss, recon, perplexity = self.model(lr)
-            recon_error = self.loss_fn(recon, hr)
-            loss = recon_error / self.data_variance + vq_loss
+            recon_error = self.loss_fn(recon, hr) / self.data_variance
+            loss = recon_error + vq_loss
             loss.backward()
             self.optimizer.step()
 

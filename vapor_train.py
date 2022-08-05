@@ -132,6 +132,7 @@ if __name__ == "__main__":
 
     s, ss, cnt = x[0].item(), x[1].item(), x[2].item()
     data_variance = (ss / cnt - (s / cnt) ** 2) * (cnt - 1) / cnt
+    log("data_variance", data_variance)
 
     if config["model_class"] == "vqvae":
         exp = Exp2(config, device, data_variance)
